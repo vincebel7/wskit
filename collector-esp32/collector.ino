@@ -126,12 +126,18 @@ void loop() {
     Serial.println("MQTT connected");
   }
 
-  // --- Read DHT22 safely ---
+  // --- Read DHT22 ---
   float h = dht.getHumidity();
   float t = dht.getTemperature();
+  bool dhtOk = !isnan(h) && !isnan(t);
+  if (!dhtOk) Serial.println("DHT22 read error");
 
-  if (isnan(h) || isnan(t)) {
-    Serial.println("Sensor read error, skipping publish");
+  // When BME280 is added: read it here independently, track bmeOk
+
+  // Skip publish only if all sensors failed
+  // Extend condition to (!dhtOk && !bmeOk) when BME280 is added
+  if (!dhtOk) {
+    Serial.println("All sensors failed, skipping publish");
     #if defined(ESP32)
       WiFi.disconnect(true);
     #elif defined(ARDUINO_SAMD_MKR1000)
@@ -143,10 +149,12 @@ void loop() {
 
   // --- Build JSON message ---
   String msg = "{";
-  msg += "\"id\": \"" + String(macStr) + "\",";
-  msg += "\"temperature\": " + String(t, 1) + ",";
-  msg += "\"humidity\": " + String(h, 1) + ",";
-  msg += "\"pressure\": " + String(0);
+  msg += "\"id\": \"" + String(macStr) + "\"";
+  if (dhtOk) {
+    msg += ",\"temperature\": " + String(t, 1);
+    msg += ",\"humidity\": " + String(h, 1);
+  }
+  msg += ",\"pressure\": " + String(0);  // replace with BME280 reading
   msg += "}";
 
   // --- Publish ---

@@ -10,7 +10,7 @@ MQTT_SUB_PASS=replace-with-password
 # Used by both the MySQL container (to initialize the database) and the subscriber (to connect).
 # DB_HOST should stay as localhost when using the containerized MySQL service.
 USE_MYSQL=True
-DB_HOST=localhost
+DB_HOST=127.0.0.1
 DB_NAME=sensordata
 DB_USER=
 DB_PASS=

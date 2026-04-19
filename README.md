@@ -23,7 +23,7 @@ OR
 
 - Node.js web server
 
-- (Optional, not included) MySQL server
+- MySQL server (included by default)
 
 ![Container diagram](temperature-data-collector-1.jpg)
 
@@ -79,7 +79,7 @@ Collector code is in the `collector` or `collector-esp32` directory.
 
 Server is everything else (web, redis, etc) and can be run via docker-compose (or each component standalone).
 
-Collectors send data via MQTT to the server. The MQTT subscriber then adds to redis and exports to MySQL (optional). The web server will read from redis.
+Collectors send data via MQTT to the server. The MQTT subscriber forwards to Redis and writes to MySQL. The web server reads from Redis for live display.
 
 
 ## Getting started
@@ -137,7 +137,15 @@ Collector (ESP32 / Arduino MKR1000):
 - DHT22 ([source](https://github.com/dvarrel/DHT22))
 - WiFi101 (if using Arduino MKR1000) ([source](https://docs.arduino.cc/libraries/wifi101))
 
-3. Fill in your MQTT and WiFi credentials near the top of the code.
+3. Fill in your credentials at the top of `collector-esp32/collector.ino` (lines 18–23):
+   ```cpp
+   char ssid[] = "";           // your WiFi network name
+   char pass[] = "";           // your WiFi password
+
+   const char broker[] = "";   // your server's IP address
+   const char mqttUser[] = ""; // MQTT_PUB_USER from .env  (default: publisher)
+   const char mqttPass[] = ""; // MQTT_PUB_PASS from .env
+   ```
 
 4. Flash the code in `collector-esp32/collector.ino` to your board.
 

@@ -4,15 +4,27 @@
 <h1 class="title">🌡️ Weather Readings</h1>
 <button id="toggle-dark" style="margin: 0 auto; display: block;">Dark Mode</button>
 <br>
+<nav>
+    <a href="/" class="active">Live</a>
+    <a href="/history">History</a>
+    <a href="/collectors">Collectors</a>
+</nav>
 <a class="github-link" href="https://github.com/vincebel7/temperature-data-collector" target="_blank">GitHub</a>
 <hr>
 <p id="newest-label">&#8593; Newest first &mdash; showing last 100 readings</p>
 <div id="databox"></div>
 
 <script>
+const darkModeKey = 'weather-dark-mode';
+if (localStorage.getItem(darkModeKey) === 'true') {
+    document.body.classList.add('dark-mode');
+    document.getElementById('toggle-dark').textContent = 'Light Mode';
+}
 document.getElementById('toggle-dark').onclick = function() {
     document.body.classList.toggle('dark-mode');
-    this.textContent = document.body.classList.contains('dark-mode') ? "Light Mode" : "Dark Mode";
+    const isDark = document.body.classList.contains('dark-mode');
+    this.textContent = isDark ? 'Light Mode' : 'Dark Mode';
+    localStorage.setItem(darkModeKey, isDark);
 };
 
 const socket = io();

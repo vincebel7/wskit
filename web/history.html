@@ -1,0 +1,138 @@
+<link href="/css/style.css" rel="stylesheet" type="text/css">
+
+<h1 class="title">📊 Historical Readings</h1>
+<button id="toggle-dark" style="margin: 0 auto; display: block;">Dark Mode</button>
+<br>
+<nav>
+    <a href="/">Live</a>
+    <a href="/history" class="active">History</a>
+    <a href="/collectors">Collectors</a>
+</nav>
+<hr>
+
+<div style="max-width: 1200px; margin: 0 auto; padding: 0 16px;">
+    <form class="filter-form" id="filter-form">
+        <label>
+            Collector
+            <select id="collector-select">
+                <option value="">All collectors</option>
+            </select>
+        </label>
+        <label>
+            From
+            <input type="datetime-local" id="from-input">
+        </label>
+        <label>
+            To
+            <input type="datetime-local" id="to-input">
+        </label>
+        <label>
+            Limit
+            <input type="number" id="limit-input" value="100" min="1" max="1000" style="width: 72px;">
+        </label>
+        <button type="submit" class="btn btn-primary">Query</button>
+    </form>
+
+    <p id="results-label" style="text-align: center; font-size: 0.85em; color: #7f8c8d; margin-bottom: 12px;"></p>
+
+    <div class="table-wrap">
+        <table class="data-table" id="results-table" style="display: none;">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Collector</th>
+                    <th>Temp (°F)</th>
+                    <th>Humidity (%)</th>
+                    <th>Pressure (hPa)</th>
+                </tr>
+            </thead>
+            <tbody id="results-body"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+const darkModeKey = 'weather-dark-mode';
+if (localStorage.getItem(darkModeKey) === 'true') {
+    document.body.classList.add('dark-mode');
+    document.getElementById('toggle-dark').textContent = 'Light Mode';
+}
+document.getElementById('toggle-dark').onclick = function() {
+    document.body.classList.toggle('dark-mode');
+    const isDark = document.body.classList.contains('dark-mode');
+    this.textContent = isDark ? 'Light Mode' : 'Dark Mode';
+    localStorage.setItem(darkModeKey, isDark);
+};
+
+// Populate collector dropdown
+fetch('/api/collectors')
+    .then(r => r.json())
+    .then(collectors => {
+        const sel = document.getElementById('collector-select');
+        collectors.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.id;
+            opt.textContent = c.name ? `${c.name} (${c.id})` : c.id;
+            sel.appendChild(opt);
+        });
+    })
+    .catch(() => {});
+
+document.getElementById('filter-form').onsubmit = async function(e) {
+    e.preventDefault();
+    const collectorId = document.getElementById('collector-select').value;
+    const fromVal = document.getElementById('from-input').value;
+    const toVal = document.getElementById('to-input').value;
+    const limit = document.getElementById('limit-input').value;
+
+    const params = new URLSearchParams();
+    if (fromVal) params.set('from', new Date(fromVal).toISOString());
+    if (toVal)   params.set('to',   new Date(toVal).toISOString());
+    if (limit)   params.set('limit', limit);
+
+    const url = collectorId
+        ? `/api/collectors/${encodeURIComponent(collectorId)}/readings?${params}`
+        : `/api/readings?${params}`;
+
+    const label = document.getElementById('results-label');
+    label.textContent = 'Loading...';
+    document.getElementById('results-table').style.display = 'none';
+
+    try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error((await res.json()).error);
+        const rows = await res.json();
+        renderResults(rows);
+        label.textContent = `${rows.length} reading${rows.length !== 1 ? 's' : ''} returned`;
+    } catch(err) {
+        label.textContent = `Error: ${err.message}`;
+    }
+};
+
+function renderResults(rows) {
+    const tbody = document.getElementById('results-body');
+    const table = document.getElementById('results-table');
+    tbody.innerHTML = '';
+
+    if (!rows.length) return;
+
+    table.style.display = 'table';
+    rows.forEach(r => {
+        const tempF    = r.temperature != null ? ((r.temperature * 9/5) + 32).toFixed(1) : '—';
+        const humidity = r.humidity    != null ? Number(r.humidity).toFixed(1)            : '—';
+        const pressure = r.pressure    != null ? Number(r.pressure).toFixed(2)            : '—';
+        const time     = new Date(r.recorded_at).toLocaleString('en-US');
+        const name     = r.collector_name ? `${r.collector_name} (${r.collector_id})` : r.collector_id;
+
+        const tr = document.createElement('tr');
+        // Values are derived from sensor data, not user-supplied text, so textContent assignment is safe
+        const cells = [time, name, tempF, humidity, pressure];
+        cells.forEach(val => {
+            const td = document.createElement('td');
+            td.textContent = val;
+            tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+    });
+}
+</script>

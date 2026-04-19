@@ -181,8 +181,8 @@ class DHTSensor:
     def __dht22_compute(self, mybytes):
         c = (float)(((mybytes[2] & 0x7F) << 8) + mybytes[3]) / 10
 
-        if c > 125:
-            c = mybytes[2]
+        if c > 80:
+            c = 80
 
         if mybytes[2] & 0x80:
             c = -c

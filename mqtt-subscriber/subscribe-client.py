@@ -68,17 +68,19 @@ def on_message(mqtt_client, userdata, message_str):
 def insert_mysql(data):
     try:
         with engine.begin() as conn:
+            conn.execute(text(
+                "INSERT IGNORE INTO collectors (id) VALUES (:id)"
+            ), {"id": data["id"]})
             conn.execute(text("""
                 INSERT INTO sensor_readings
-                    (collector_id, date, sensor, temperature, humidity, pressure)
+                    (collector_id, recorded_at, temperature, humidity, pressure)
                 VALUES
-                    (:collector_id, :date, :sensor, :temperature, :humidity, :pressure)
+                    (:collector_id, :recorded_at, :temperature, :humidity, :pressure)
             """), {
                 "collector_id": data["id"],
-                "date":         data["time"],
-                "sensor":       "DHT22",
-                "temperature":  data["temperature"],
-                "humidity":     data["humidity"],
+                "recorded_at":  data["time"],
+                "temperature":  data.get("temperature"),
+                "humidity":     data.get("humidity"),
                 "pressure":     data.get("pressure", 0),
             })
     except Exception as e:

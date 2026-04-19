@@ -92,7 +92,7 @@ case "$MYSQL_MODE" in
     [[ -z "$DB_ROOT" ]] && err "MySQL root password cannot be empty."
 
     sed -i "s|USE_MYSQL=.*|USE_MYSQL=True|"                               .env
-    sed -i "s|DB_HOST=.*|DB_HOST=localhost|"                              .env
+    sed -i "s|DB_HOST=.*|DB_HOST=127.0.0.1|"                             .env
     sed -i "s|DB_NAME=.*|DB_NAME=${DB_NAME}|"                             .env
     sed -i "s|DB_USER=.*|DB_USER=${DB_USER}|"                             .env
     sed -i "s|DB_PASS=.*|DB_PASS=${DB_PASS}|"                             .env

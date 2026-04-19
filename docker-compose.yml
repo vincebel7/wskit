@@ -33,12 +33,13 @@ services:
     build: ./web
     env_file:
      - ./.env
-    ports:
-      - "8080:8080"
     network_mode: host
     restart: unless-stopped
     depends_on:
-      - redis
+      redis:
+        condition: service_started
+      mysql:
+        condition: service_healthy  # remove if disabling MySQL or using external
     stdin_open: true
 
   mysql:
