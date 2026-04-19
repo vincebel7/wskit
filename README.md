@@ -90,10 +90,44 @@ Server:
 
 2. If you have a firewall, two TCP ports need to be opened: 1883 for receiving collector messages, and 8080 for the web server.
 
-3. Run `docker-compose up --build`
+3. Copy and fill in the environment file:
+   ```bash
+   cp env_sample .env
+   ```
+   At minimum, set the four MQTT passwords and the three MySQL credentials:
+   ```
+   MQTT_PUB_PASS=your_publisher_password
+   MQTT_SUB_PASS=your_subscriber_password
+   DB_USER=your_db_user
+   DB_PASS=your_db_password
+   MYSQLDB_ROOT_PASSWORD=your_root_password
+   ```
 
-4. Server is ready to accept new connections from collectors, and the web server should be visible at `http://server_ip:8080`
+4. Run `docker-compose up --build`
 
+5. Server is ready. Dashboard: `http://server_ip:8080`
+
+MySQL is included by default — the `sensor_readings` table is created automatically from `sensordump.sql` on first boot.
+
+### Disabling MySQL (Redis-only mode)
+
+Data stored in Redis only is **lost on container restart**. If you want this anyway:
+
+1. Set `USE_MYSQL=False` in `.env`
+2. Comment out the `mysql` service in `docker-compose.yml`
+3. Remove the `mysql` entry from `mqtt-subscriber`'s `depends_on` in `docker-compose.yml`
+
+### Using an external MySQL instance
+
+1. Comment out the `mysql` service in `docker-compose.yml` and remove its `depends_on` entry from `mqtt-subscriber`
+2. Set `DB_HOST` to your external MySQL host in `.env`
+3. Create the schema on your external instance:
+   ```bash
+   mysql -h your_host -u your_user -p -e "CREATE DATABASE IF NOT EXISTS sensordata;"
+   mysql -h your_host -u your_user -p sensordata < sensordump.sql
+   ```
+
+---
 
 Collector (ESP32 / Arduino MKR1000):
 1. Build the circuit in the "Circuit diagram" section above, with a 10k ohm resistor, DHT sensor, and your board. Have the data pin going to the proper GPIO port.

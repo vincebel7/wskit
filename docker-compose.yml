@@ -4,7 +4,7 @@ services:
     build: ./redis
     network_mode: host
     restart: unless-stopped
- 
+
   mqtt-server:
     container_name: mqtt-server
     build: ./mqtt-server
@@ -21,8 +21,12 @@ services:
     network_mode: host
     restart: unless-stopped
     depends_on:
-      - mqtt-server
-      - redis
+      mqtt-server:
+        condition: service_started
+      redis:
+        condition: service_started
+      mysql:
+        condition: service_healthy  # remove this line if disabling MySQL or using external
 
   web:
     container_name: web
@@ -37,4 +41,37 @@ services:
       - redis
     stdin_open: true
 
- #db-writer:
+  mysql:
+    container_name: mysql
+    image: mysql:8.0
+    env_file:
+      - ./.env
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQLDB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASS}
+    volumes:
+      - ./sensordump.sql:/docker-entrypoint-initdb.d/sensordump.sql
+      - mysql-data:/var/lib/mysql
+    network_mode: host
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  # To disable MySQL:
+  #   1. Comment out the mysql service above and the mysql-data volume below.
+  #   2. Remove the mysql depends_on entry from mqtt-subscriber above.
+  #   3. Set USE_MYSQL=False in .env.
+  #
+  # To use an external MySQL instead:
+  #   1. Comment out the mysql service above and the mysql-data volume below.
+  #   2. Remove the mysql depends_on entry from mqtt-subscriber above.
+  #   3. Set DB_HOST to your external MySQL host in .env.
+  #   4. Create the schema manually: mysql -h host -u user -p sensordata < sensordump.sql
+
+volumes:
+  mysql-data:

@@ -12,12 +12,13 @@ import json
 import os
 import pathlib
 import sqlalchemy as db
+from sqlalchemy import text
 from dotenv import load_dotenv
 
 file_path = pathlib.Path(__file__).parent.resolve()
 load_dotenv(str(file_path) + '/../.env')
 
-USE_MYSQL = os.getenv("USE_MYSQL") # True / False
+USE_MYSQL = os.getenv("USE_MYSQL", "false").lower() == "true"
 MYSQL_HOST = str(os.getenv("DB_HOST"))
 MYSQL_DB = str(os.getenv("DB_NAME"))
 MYSQL_USER = str(os.getenv("DB_USER"))
@@ -60,19 +61,37 @@ def on_message(mqtt_client, userdata, message_str):
     jsondump = json.dumps(jsonload)
     print("Data received: " + jsondump)
     redis_client.publish(REDIS_CHANNEL, str(jsondump))
-    if(USE_MYSQL == True): insert_mysql(mqtt_client, jsondump)
+    if USE_MYSQL:
+        insert_mysql(jsonload)
 
 
-def insert_mysql(mqtt_client, message):
-    return
+def insert_mysql(data):
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                INSERT INTO sensor_readings
+                    (collector_id, date, sensor, temperature, humidity, pressure)
+                VALUES
+                    (:collector_id, :date, :sensor, :temperature, :humidity, :pressure)
+            """), {
+                "collector_id": data["id"],
+                "date":         data["time"],
+                "sensor":       "DHT22",
+                "temperature":  data["temperature"],
+                "humidity":     data["humidity"],
+                "pressure":     data.get("pressure", 0),
+            })
+    except Exception as e:
+        print(f"MySQL insert failed: {e}")
 
 
 # MySQL connection
-if(USE_MYSQL == True):
+if USE_MYSQL:
     print("Connecting to MySQL...")
-    mysql_conn_string = "mysql://" + MYSQL_USER + ":" + MYSQL_PASS + "@" + MYSQL_HOST + ":" + str(MYSQL_PORT) + "/" + MYSQL_DB
+    mysql_conn_string = f"mysql://{MYSQL_USER}:{MYSQL_PASS}@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DB}"
     engine = db.create_engine(mysql_conn_string)
-    conn = engine.connect()
+    engine.connect().close()  # validate credentials at startup
+    print("MySQL connection OK")
 
 # Redis connection
 redis_client = redis.StrictRedis(REDIS_HOST, REDIS_PORT, REDIS_DB)

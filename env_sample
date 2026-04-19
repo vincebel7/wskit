@@ -1,11 +1,15 @@
-# MQTT connection information
+# MQTT credentials
+# Used by the MQTT broker (to create the password file) and the subscriber (to connect).
+# Collectors use these same credentials, hardcoded in collector.ino before flashing.
 MQTT_PUB_USER=publisher
-MQTT_PUB_PASS=replace-with-env-pw
+MQTT_PUB_PASS=replace-with-password
 MQTT_SUB_USER=subscriber
-MQTT_SUB_PASS=replace-with-env-pw
+MQTT_SUB_PASS=replace-with-password
 
-# MySQL database connection information
-USE_MYSQL=False
+# MySQL credentials
+# Used by both the MySQL container (to initialize the database) and the subscriber (to connect).
+# DB_HOST should stay as localhost when using the containerized MySQL service.
+USE_MYSQL=True
 DB_HOST=localhost
 DB_NAME=sensordata
 DB_USER=

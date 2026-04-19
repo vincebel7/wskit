@@ -37,6 +37,18 @@ hr {
     margin: 20px 0;
 }
 
+#newest-label {
+    text-align: center;
+    font-size: 0.85em;
+    color: #7f8c8d;
+    margin: -8px 0 10px;
+    letter-spacing: 0.5px;
+}
+
+.dark-mode #newest-label {
+    color: #8cdc97;
+}
+
 #databox {
     background-color: #eafaf1;
     border-radius: 12px;

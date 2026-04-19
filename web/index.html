@@ -6,6 +6,7 @@
 <br>
 <a class="github-link" href="https://github.com/vincebel7/temperature-data-collector" target="_blank">GitHub</a>
 <hr>
+<p id="newest-label">&#8593; Newest first &mdash; showing last 100 readings</p>
 <div id="databox"></div>
 
 <script>
@@ -15,6 +16,7 @@ document.getElementById('toggle-dark').onclick = function() {
 };
 
 const socket = io();
+const MAX_READINGS = 100;
 
 socket.on('data-from-server', function (data) {
 	var jsonData = JSON.parse(data);
@@ -24,9 +26,6 @@ socket.on('data-from-server', function (data) {
 	var pressure = jsonData['pressure'];
 	var time = jsonData['time'];
 	var id = jsonData['id'];
-	//var loc = jsonData.data[0].location;
-	//var sensor = jsonData.data[0].sensor;
-	//var dt = jsonData.data[0].date;
 
 	const timeOptions = {
 		hour12: true,
@@ -35,7 +34,7 @@ socket.on('data-from-server', function (data) {
 		second: "2-digit"
 	};
 
-	var newtime = new Date(time).toLocaleTimeString("en-US",timeOptions);;
+	var newtime = new Date(time).toLocaleTimeString("en-US", timeOptions);
 	var temp_f = ((temp_c * 9/5) + 32).toFixed(1);
 	var humidityFmt = Number(humidity).toFixed(1);
 
@@ -44,16 +43,10 @@ socket.on('data-from-server', function (data) {
 
 	var msgSpan = document.createElement("span");
 	msgSpan.textContent = message;
-	dataDiv.appendChild(msgSpan);
-	dataDiv.scrollTop = dataDiv.scrollHeight;
+	dataDiv.insertBefore(msgSpan, dataDiv.firstChild);
+
+	while (dataDiv.children.length > MAX_READINGS) {
+		dataDiv.removeChild(dataDiv.lastChild);
+	}
 });
-
-var polldb = async function () { while (true) {
-	socket.emit('poll-db', {});
-
-	// Wait 1 second
-	await new Promise(resolve => setTimeout(resolve, 1000));
-}};
-
-polldb();
 </script>
