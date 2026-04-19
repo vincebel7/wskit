@@ -1,30 +1,11 @@
 <link href="/css/style.css" rel="stylesheet" type="text/css">
-
-<h1 class="title">📡 Collectors</h1>
-<button id="toggle-dark" style="margin: 0 auto; display: block;">Dark Mode</button>
-<br>
-<nav>
-    <a href="/">Live</a>
-    <a href="/history">History</a>
-    <a href="/collectors" class="active">Collectors</a>
-</nav>
-<hr>
+<script>window._headerConfig = { title: 'Collectors', icon: '📡', nav: 'collectors' };</script>
+<div id="page-header"></div>
+<script src="/js/header.js"></script>
 
 <div id="collectors-container" style="max-width: 900px; margin: 0 auto; padding: 0 16px;"></div>
 
 <script>
-const darkModeKey = 'weather-dark-mode';
-if (localStorage.getItem(darkModeKey) === 'true') {
-    document.body.classList.add('dark-mode');
-    document.getElementById('toggle-dark').textContent = 'Light Mode';
-}
-document.getElementById('toggle-dark').onclick = function() {
-    document.body.classList.toggle('dark-mode');
-    const isDark = document.body.classList.contains('dark-mode');
-    this.textContent = isDark ? 'Light Mode' : 'Dark Mode';
-    localStorage.setItem(darkModeKey, isDark);
-};
-
 async function loadCollectors() {
     const container = document.getElementById('collectors-container');
     try {
@@ -94,7 +75,7 @@ function buildCard(collector) {
 
     const fields = [
         { key: 'name',        label: 'Name' },
-        { key: 'device_type', label: 'Device type' },
+        { key: 'device_type', label: 'Device type', options: ['', 'ESP32', 'Arduino'] },
         { key: 'sensor_type', label: 'Sensor type' },
         { key: 'location',    label: 'Location' },
     ];
@@ -103,9 +84,21 @@ function buildCard(collector) {
     fields.forEach(f => {
         const lbl = document.createElement('label');
         lbl.textContent = f.label;
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.value = collector[f.key] || '';
+        let input;
+        if (f.options) {
+            input = document.createElement('select');
+            f.options.forEach(opt => {
+                const o = document.createElement('option');
+                o.value = opt;
+                o.textContent = opt || '—';
+                if ((collector[f.key] || '') === opt) o.selected = true;
+                input.appendChild(o);
+            });
+        } else {
+            input = document.createElement('input');
+            input.type = 'text';
+            input.value = collector[f.key] || '';
+        }
         lbl.appendChild(input);
         form.appendChild(lbl);
         inputs[f.key] = input;

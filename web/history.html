@@ -1,14 +1,7 @@
 <link href="/css/style.css" rel="stylesheet" type="text/css">
-
-<h1 class="title">📊 Historical Readings</h1>
-<button id="toggle-dark" style="margin: 0 auto; display: block;">Dark Mode</button>
-<br>
-<nav>
-    <a href="/">Live</a>
-    <a href="/history" class="active">History</a>
-    <a href="/collectors">Collectors</a>
-</nav>
-<hr>
+<script>window._headerConfig = { title: 'Historical Readings', icon: '📊', nav: 'history' };</script>
+<div id="page-header"></div>
+<script src="/js/header.js"></script>
 
 <div style="max-width: 1200px; margin: 0 auto; padding: 0 16px;">
     <form class="filter-form" id="filter-form">
@@ -33,7 +26,10 @@
         <button type="submit" class="btn btn-primary">Query</button>
     </form>
 
-    <p id="results-label" style="text-align: center; font-size: 0.85em; color: #7f8c8d; margin-bottom: 12px;"></p>
+    <div style="display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 12px;">
+        <p id="results-label" style="font-size: 0.85em; color: #7f8c8d; margin: 0;"></p>
+        <button id="export-csv" class="btn" style="display: none; font-size: 0.85em; padding: 4px 10px;">Export CSV</button>
+    </div>
 
     <div class="table-wrap">
         <table class="data-table" id="results-table" style="display: none;">
@@ -52,17 +48,7 @@
 </div>
 
 <script>
-const darkModeKey = 'weather-dark-mode';
-if (localStorage.getItem(darkModeKey) === 'true') {
-    document.body.classList.add('dark-mode');
-    document.getElementById('toggle-dark').textContent = 'Light Mode';
-}
-document.getElementById('toggle-dark').onclick = function() {
-    document.body.classList.toggle('dark-mode');
-    const isDark = document.body.classList.contains('dark-mode');
-    this.textContent = isDark ? 'Light Mode' : 'Dark Mode';
-    localStorage.setItem(darkModeKey, isDark);
-};
+let lastRows = [];
 
 // Populate collector dropdown
 fetch('/api/collectors')
@@ -95,18 +81,45 @@ document.getElementById('filter-form').onsubmit = async function(e) {
         : `/api/readings?${params}`;
 
     const label = document.getElementById('results-label');
+    const exportBtn = document.getElementById('export-csv');
     label.textContent = 'Loading...';
+    exportBtn.style.display = 'none';
     document.getElementById('results-table').style.display = 'none';
 
     try {
         const res = await fetch(url);
         if (!res.ok) throw new Error((await res.json()).error);
         const rows = await res.json();
+        lastRows = rows;
         renderResults(rows);
         label.textContent = `${rows.length} reading${rows.length !== 1 ? 's' : ''} returned`;
+        if (rows.length) exportBtn.style.display = '';
     } catch(err) {
+        lastRows = [];
         label.textContent = `Error: ${err.message}`;
     }
+};
+
+document.getElementById('export-csv').onclick = function() {
+    const headers = ['Time', 'Collector', 'Temp (F)', 'Humidity (%)', 'Pressure (hPa)'];
+    const csvRows = [headers, ...lastRows.map(r => {
+        const tempF    = r.temperature != null ? ((r.temperature * 9/5) + 32).toFixed(1) : '';
+        const humidity = r.humidity    != null ? Number(r.humidity).toFixed(1)            : '';
+        const pressure = r.pressure    != null ? Number(r.pressure).toFixed(2)            : '';
+        const time     = new Date(r.recorded_at).toLocaleString('en-US');
+        const name     = r.collector_name ? `${r.collector_name} (${r.collector_id})` : r.collector_id;
+        return [time, name, tempF, humidity, pressure];
+    })];
+
+    const csv = csvRows.map(row =>
+        row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')
+    ).join('\r\n');
+
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = `wskit-readings-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
 };
 
 function renderResults(rows) {

@@ -1,32 +1,12 @@
 <link href="/css/style.css" rel="stylesheet" type="text/css">
 <script src="https://cdn.socket.io/4.4.0/socket.io.min.js" integrity="sha384-1fOn6VtTq3PWwfsOrk45LnYcGosJwzMHv+Xh/Jx5303FVOXzEnw0EpLv30mtjmlj" crossorigin="anonymous"></script>
-
-<h1 class="title">🌡️ Weather Readings</h1>
-<button id="toggle-dark" style="margin: 0 auto; display: block;">Dark Mode</button>
-<br>
-<nav>
-    <a href="/" class="active">Live</a>
-    <a href="/history">History</a>
-    <a href="/collectors">Collectors</a>
-</nav>
-<a class="github-link" href="https://github.com/vincebel7/temperature-data-collector" target="_blank">GitHub</a>
-<hr>
+<script>window._headerConfig = { title: 'Weather Readings', icon: '🌡️', nav: 'live' };</script>
+<div id="page-header"></div>
+<script src="/js/header.js"></script>
 <p id="newest-label">&#8593; Newest first &mdash; showing last 100 readings</p>
 <div id="databox"></div>
 
 <script>
-const darkModeKey = 'weather-dark-mode';
-if (localStorage.getItem(darkModeKey) === 'true') {
-    document.body.classList.add('dark-mode');
-    document.getElementById('toggle-dark').textContent = 'Light Mode';
-}
-document.getElementById('toggle-dark').onclick = function() {
-    document.body.classList.toggle('dark-mode');
-    const isDark = document.body.classList.contains('dark-mode');
-    this.textContent = isDark ? 'Light Mode' : 'Dark Mode';
-    localStorage.setItem(darkModeKey, isDark);
-};
-
 const socket = io();
 const MAX_READINGS = 100;
 
