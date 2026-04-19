@@ -1,5 +1,5 @@
 #!/bin/bash
-# Server setup script for temperature-data-collector
+# Server setup script for wskit
 # Run as a user with sudo privileges on a Debian/Ubuntu host.
 
 set -e

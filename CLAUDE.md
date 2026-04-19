@@ -1,4 +1,4 @@
-# temperature-data-collector — Claude Context
+# wskit — Claude Context
 
 DIY weather station system. Distributed sensor nodes publish readings over MQTT to a self-hosted, containerized hub that streams live data to a web dashboard.
 

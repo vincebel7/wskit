@@ -6,7 +6,7 @@ wskit is an open-source, DIY **weather station kit** — lightweight sensor coll
 
 A **Collector** (ESP32 or Arduino MKR1000) reads a DHT22 sensor and publishes JSON readings over WiFi via MQTT. The **Server** (Docker Compose) receives those readings, stores them in MySQL, and serves a live dashboard.
 
-![Container diagram](temperature-data-collector-1.jpg)
+![Container diagram](img/temperature-data-collector-1.jpg)
 (outdated diagram, similar concept)
 
 ---
@@ -92,7 +92,7 @@ Coming soon: a 3D-printable Stephenson screen design in PETG for outdoor placeme
 
 ### DHT circuit diagram
 
-![DHT circuit](dht-circuit.jpg)
+![DHT circuit](img/dht-circuit.jpg)
 
 [Image source](https://osoyoo.com/2017/07/19/arduino-lesson-dht11-sensor/)
 

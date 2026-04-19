@@ -20,7 +20,7 @@
         `<h1 class="title">${cfg.icon ? cfg.icon + ' ' : ''}${cfg.title || 'wskit'}</h1>` +
         `<button id="toggle-dark" style="margin: 0 auto; display: block;">${isDark ? 'Light Mode' : 'Dark Mode'}</button>` +
         `<br><nav>\n    ${navHtml}\n</nav>` +
-        `<a class="github-link" href="https://github.com/vincebel7/temperature-data-collector" target="_blank">GitHub</a>` +
+        `<a class="github-link" href="https://github.com/vincebel7/wskit" target="_blank">GitHub</a>` +
         `<hr>`;
 
     document.getElementById('toggle-dark').onclick = function () {

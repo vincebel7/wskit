@@ -1,4 +1,4 @@
--- temperature-data-collector schema
+-- wskit schema
 -- Database: sensordata
 
 CREATE TABLE IF NOT EXISTS `collectors` (
