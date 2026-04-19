@@ -1,4 +1,4 @@
-# wskit
+# wskit ⛅
 
 wskit is an open-source, DIY **weather station kit** — lightweight sensor collectors and a self-hosted, Dockerized hub that streams live temperature and humidity data to a web dashboard. Barometric pressure and air quality are on the roadmap.
 
@@ -7,6 +7,7 @@ wskit is an open-source, DIY **weather station kit** — lightweight sensor coll
 A **Collector** (ESP32 or Arduino MKR1000) reads a DHT22 sensor and publishes JSON readings over WiFi via MQTT. The **Server** (Docker Compose) receives those readings, stores them in MySQL, and serves a live dashboard.
 
 ![Container diagram](temperature-data-collector-1.jpg)
+(outdated diagram, similar concept)
 
 ---
 
@@ -14,7 +15,7 @@ A **Collector** (ESP32 or Arduino MKR1000) reads a DHT22 sensor and publishes JS
 
 ### Server
 
-1. Clone this repository onto your server.
+1. Clone this repository onto your Ubuntu/Debian server.
 
 2. Open TCP ports on your firewall if needed:
    - `1883` — MQTT (collector → broker)
@@ -102,8 +103,9 @@ Coming soon: a 3D-printable Stephenson screen design in PETG for outdoor placeme
 **v1.0**
 - Collector: Barometric pressure sensor (BME280)
 - Collector: WiFi credential management (no more hardcoded values)
-- Collector: Batteries + model files for casing / outdoor placement
-- Deprecate / remove Orange Pi collector
+- Collector: Batteries
+- Collector: Model files for casing / outdoor placement
+- Remove Orange Pi collector
 
 **v2.0**
 - Collector: Solar power
