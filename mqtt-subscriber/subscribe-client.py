@@ -7,7 +7,6 @@ Purpose: Subscribes to the MQTT server and redirects messages to other services,
 import datetime
 import paho.mqtt.client as mqtt
 import time
-import redis
 import json
 import os
 import pathlib
@@ -18,7 +17,6 @@ from dotenv import load_dotenv
 file_path = pathlib.Path(__file__).parent.resolve()
 load_dotenv(str(file_path) + '/../.env')
 
-USE_MYSQL = os.getenv("USE_MYSQL", "false").lower() == "true"
 MYSQL_HOST = str(os.getenv("DB_HOST"))
 MYSQL_DB = str(os.getenv("DB_NAME"))
 MYSQL_USER = str(os.getenv("DB_USER"))
@@ -29,11 +27,6 @@ MQTT_BROKER = "localhost"
 MQTT_SUB_USER = os.getenv("MQTT_SUB_USER")
 MQTT_SUB_PASS = os.getenv("MQTT_SUB_PASS")
 MQTT_PORT = 1883
-
-REDIS_HOST = "localhost"
-REDIS_DB = 0
-REDIS_CHANNEL = "DHT-data"
-REDIS_PORT = 6379
 
 global Connected
 Connected = False
@@ -60,9 +53,7 @@ def on_message(mqtt_client, userdata, message_str):
 
     jsondump = json.dumps(jsonload)
     print("Data received: " + jsondump)
-    redis_client.publish(REDIS_CHANNEL, str(jsondump))
-    if USE_MYSQL:
-        insert_mysql(jsonload)
+    insert_mysql(jsonload)
 
 
 def insert_mysql(data):
@@ -88,15 +79,11 @@ def insert_mysql(data):
 
 
 # MySQL connection
-if USE_MYSQL:
-    print("Connecting to MySQL...")
-    mysql_conn_string = f"mysql://{MYSQL_USER}:{MYSQL_PASS}@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DB}"
-    engine = db.create_engine(mysql_conn_string)
-    engine.connect().close()  # validate credentials at startup
-    print("MySQL connection OK")
-
-# Redis connection
-redis_client = redis.StrictRedis(REDIS_HOST, REDIS_PORT, REDIS_DB)
+print("Connecting to MySQL...")
+mysql_conn_string = f"mysql://{MYSQL_USER}:{MYSQL_PASS}@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DB}"
+engine = db.create_engine(mysql_conn_string)
+engine.connect().close()  # validate credentials at startup
+print("MySQL connection OK")
 
 # MQTT connection
 mqtt_client = mqtt.Client("Temperature-Humidity-Subscriber-1")

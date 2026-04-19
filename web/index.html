@@ -36,8 +36,8 @@ socket.on('data-from-server', function (data) {
 	var temp_c = jsonData['temperature'];
 	var humidity = jsonData['humidity'];
 	var pressure = jsonData['pressure'];
-	var time = jsonData['time'];
-	var id = jsonData['id'];
+	var time = jsonData['recorded_at'];
+	var id = jsonData['collector_id'];
 
 	const timeOptions = {
 		hour12: true,
@@ -50,7 +50,8 @@ socket.on('data-from-server', function (data) {
 	var temp_f = ((temp_c * 9/5) + 32).toFixed(1);
 	var humidityFmt = Number(humidity).toFixed(1);
 
-	var message = newtime + ": HOST " + id + ", TEMPERATURE " + temp_f + "° F, HUMIDITY " + humidityFmt + "%, PRESSURE " + pressure;
+	var displayId = jsonData['collector_name'] ? jsonData['collector_name'] + ' (' + id + ')' : id;
+	var message = newtime + ": HOST " + displayId + ", TEMPERATURE " + temp_f + "° F, HUMIDITY " + humidityFmt + "%, PRESSURE " + pressure;
 	var dataDiv = document.getElementById('databox');
 
 	var msgSpan = document.createElement("span");

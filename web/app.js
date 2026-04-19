@@ -1,30 +1,17 @@
 require("dotenv").config();
 
-// Redis
-const redis = require('redis');
-const redis_client = redis.createClient({ socket: { port: 6379 } });
-const redis_subscriber = redis_client.duplicate();
-redis_subscriber.connect();
-
-redis_subscriber.on('ready', () => console.log("Connected to Redis"));
-redis_subscriber.on('error', err => console.error("Error connecting to Redis", err));
-
 // MySQL
-const USE_MYSQL = process.env.USE_MYSQL?.toLowerCase() === 'true';
-let pool;
-if (USE_MYSQL) {
-    const mysql = require('mysql2/promise');
-    pool = mysql.createPool({
-        host: process.env.DB_HOST,
-        user: process.env.DB_USER,
-        password: process.env.DB_PASS,
-        database: process.env.DB_NAME,
-        port: 3306,
-        waitForConnections: true,
-        connectionLimit: 10,
-    });
-    console.log("MySQL pool initialized");
-}
+const mysql = require('mysql2/promise');
+const pool = mysql.createPool({
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASS,
+    database: process.env.DB_NAME,
+    port: 3306,
+    waitForConnections: true,
+    connectionLimit: 10,
+});
+console.log("MySQL pool initialized");
 
 // Web server
 const http = require('http');
@@ -38,7 +25,7 @@ const io = require('socket.io')(server);
 
 console.log("Listening on 8080");
 
-app.get('/', function (req, res) {
+app.get('/', (_req, res) => {
     console.log("Webpage request");
     res.sendFile(__dirname + "/index.html");
 });
@@ -48,17 +35,49 @@ app.get('/collectors', (_req, res) => res.sendFile(__dirname + "/collectors.html
 
 app.use(express.static('public'));
 
-// --- REST API ---
+// --- Live feed: poll MySQL every 5s, push new rows to all connected clients ---
 
-function mysqlRequired(_req, res, next) {
-    if (!USE_MYSQL) return res.status(503).json({ error: "MySQL is not enabled" });
-    next();
-}
+let lastSeenId = 0;
+
+// Initialize lastSeenId to current MAX so we don't replay history on startup
+(async () => {
+    try {
+        const [[row]] = await pool.query("SELECT MAX(id) AS maxId FROM sensor_readings");
+        lastSeenId = row.maxId ?? 0;
+        console.log(`Live feed initialized, lastSeenId=${lastSeenId}`);
+    } catch (e) {
+        console.error("Failed to initialize lastSeenId:", e.message);
+    }
+})();
+
+setInterval(async () => {
+    try {
+        const [rows] = await pool.query(
+            `SELECT r.id, r.collector_id, r.recorded_at, r.temperature, r.humidity, r.pressure,
+                    c.name AS collector_name
+             FROM sensor_readings r
+             JOIN collectors c ON r.collector_id = c.id
+             WHERE r.id > ?
+             ORDER BY r.id ASC`,
+            [lastSeenId]
+        );
+        if (rows.length) {
+            rows.forEach(row => io.emit("data-from-server", JSON.stringify(row)));
+            lastSeenId = rows[rows.length - 1].id;
+        }
+    } catch (e) {
+        console.error("Poll error:", e.message);
+    }
+}, 5000);
+
+io.on('connection', _socket => console.log("New socket connection established"));
+
+// --- REST API ---
 
 const COLLECTOR_EDITABLE_FIELDS = ['name', 'device_type', 'sensor_type', 'location'];
 
 // GET /api/collectors
-app.get('/api/collectors', mysqlRequired, async (req, res) => {
+app.get('/api/collectors', async (_req, res) => {
     try {
         const [rows] = await pool.query("SELECT * FROM collectors ORDER BY created_at DESC");
         res.json(rows);
@@ -68,7 +87,7 @@ app.get('/api/collectors', mysqlRequired, async (req, res) => {
 });
 
 // GET /api/collectors/:id
-app.get('/api/collectors/:id', mysqlRequired, async (req, res) => {
+app.get('/api/collectors/:id', async (req, res) => {
     try {
         const [rows] = await pool.query("SELECT * FROM collectors WHERE id = ?", [req.params.id]);
         if (!rows.length) return res.status(404).json({ error: "Collector not found" });
@@ -79,7 +98,7 @@ app.get('/api/collectors/:id', mysqlRequired, async (req, res) => {
 });
 
 // PATCH /api/collectors/:id  — update name, device_type, sensor_type, location
-app.patch('/api/collectors/:id', mysqlRequired, async (req, res) => {
+app.patch('/api/collectors/:id', async (req, res) => {
     const updates = {};
     for (const field of COLLECTOR_EDITABLE_FIELDS) {
         if (req.body[field] !== undefined) updates[field] = req.body[field];
@@ -146,22 +165,11 @@ async function queryReadings(req, res, collectorId = null) {
 }
 
 // GET /api/readings?collector_id=&from=&to=&limit=
-app.get('/api/readings', mysqlRequired, (req, res) => queryReadings(req, res));
+app.get('/api/readings', (req, res) => queryReadings(req, res));
 
 // GET /api/collectors/:id/readings?from=&to=&limit=
-app.get('/api/collectors/:id/readings', mysqlRequired, (req, res) => queryReadings(req, res, req.params.id));
+app.get('/api/collectors/:id/readings', (req, res) => queryReadings(req, res, req.params.id));
 
 // --- End REST API ---
-
-// On socket connection
-io.on('connection', function (socket) {
-    console.log("New socket connection established");
-
-    (async () => {
-        await redis_subscriber.subscribe('DHT-data', (message) => {
-            socket.emit("data-from-server", message);
-        });
-    })();
-});
 
 server.listen(8080);

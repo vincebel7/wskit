@@ -1,7 +1,7 @@
 # temperature-data-collector
 An open-source DIY weather station, consisting of lightweight collectors and a Dockerized sensor Hub (MQTT + web dashboard). Currently collects temperature and humidity data, while barometric pressure and air quality are on the roadmap.
 
-This is an all-in-one project which includes: collectors for various hardware platforms, an MQTT system (server, subscribers, publishers), Redis server, the ability to write to MySQL, and a web server to monitor live data.
+This is an all-in-one project which includes: collectors for various hardware platforms, an MQTT system (server, subscribers, publishers), MySQL database, a web server to monitor live data, and an API to query historical data.
 
 There are two components: Collector, and Server.
 
@@ -19,11 +19,9 @@ OR
 
 - MQTT subscriber
 
-- Redis server
-
 - Node.js web server
 
-- MySQL server (included by default)
+- MySQL server
 
 ![Container diagram](temperature-data-collector-1.jpg)
 
@@ -77,9 +75,9 @@ Coming soon
 
 Collector code is in the `collector` or `collector-esp32` directory.
 
-Server is everything else (web, redis, etc) and can be run via docker-compose (or each component standalone).
+Server is everything else (web, mysql, etc) and can be run via docker-compose (or each component standalone).
 
-Collectors send data via MQTT to the server. The MQTT subscriber forwards to Redis and writes to MySQL. The web server reads from Redis for live display.
+Collectors send data via MQTT to the server. The MQTT subscriber writes to MySQL. The web server reads from MySQL for live display. There are API endpoints to retrieve historical readings and to view/edit collectors.
 
 
 ## Getting started
@@ -109,13 +107,6 @@ Server:
 
 MySQL is included by default — the `sensor_readings` table is created automatically from `sensordump.sql` on first boot.
 
-### Disabling MySQL (Redis-only mode)
-
-Data stored in Redis only is **lost on container restart**. If you want this anyway:
-
-1. Set `USE_MYSQL=False` in `.env`
-2. Comment out the `mysql` service in `docker-compose.yml`
-3. Remove the `mysql` entry from `mqtt-subscriber`'s `depends_on` in `docker-compose.yml`
 
 ### Using an external MySQL instance
 

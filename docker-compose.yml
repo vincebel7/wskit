@@ -1,10 +1,4 @@
 services:
-  redis:
-    container_name: redis
-    build: ./redis
-    network_mode: host
-    restart: unless-stopped
-
   mqtt-server:
     container_name: mqtt-server
     build: ./mqtt-server
@@ -23,10 +17,8 @@ services:
     depends_on:
       mqtt-server:
         condition: service_started
-      redis:
-        condition: service_started
       mysql:
-        condition: service_healthy  # remove this line if disabling MySQL or using external
+        condition: service_healthy  # remove this line if using external MySQL
 
   web:
     container_name: web
@@ -36,10 +28,8 @@ services:
     network_mode: host
     restart: unless-stopped
     depends_on:
-      redis:
-        condition: service_started
       mysql:
-        condition: service_healthy  # remove if disabling MySQL or using external
+        condition: service_healthy  # remove this line if using external MySQL
     stdin_open: true
 
   mysql:
@@ -63,14 +53,9 @@ services:
       timeout: 5s
       retries: 6
 
-  # To disable MySQL:
+  # To use an external MySQL instead of the containerized one:
   #   1. Comment out the mysql service above and the mysql-data volume below.
-  #   2. Remove the mysql depends_on entry from mqtt-subscriber above.
-  #   3. Set USE_MYSQL=False in .env.
-  #
-  # To use an external MySQL instead:
-  #   1. Comment out the mysql service above and the mysql-data volume below.
-  #   2. Remove the mysql depends_on entry from mqtt-subscriber above.
+  #   2. Remove the mysql depends_on entries from mqtt-subscriber and web above.
   #   3. Set DB_HOST to your external MySQL host in .env.
   #   4. Create the schema manually: mysql -h host -u user -p sensordata < sensordump.sql
 

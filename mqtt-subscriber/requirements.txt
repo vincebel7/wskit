@@ -1,5 +1,4 @@
 paho-mqtt==1.6.1
-redis==4.0.2
 python-dotenv==0.21.0
 sqlalchemy==1.4.44
 mysqlclient==2.1.1
