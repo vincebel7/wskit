@@ -9,26 +9,76 @@ h1 {
 	color: green;
 	font-family: Verdana;
 }
+/* Site header / navbar */
+.site-header {
+    background: #fff;
+    border-bottom: 2px solid #8cdc97;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.site-header-inner {
+    max-width: 1500px;
+    margin: 0 auto;
+    padding: 0 24px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+}
+
+.brand {
+    font-weight: 700;
+    font-size: 1.15em;
+    color: #2c3e50;
+    text-decoration: none;
+    letter-spacing: 1px;
+    font-family: 'Segoe UI', Verdana, Arial, sans-serif;
+    flex: 1;
+}
+
+.brand:hover { color: #2980b9; }
+
+.header-controls {
+    flex: 1;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 14px;
+}
+
+.github-link {
+    color: #2980b9;
+    font-weight: bold;
+    text-decoration: none;
+    font-size: 0.9em;
+    font-family: 'Segoe UI', Verdana, Arial, sans-serif;
+}
+
+.github-link:hover { text-decoration: underline; }
+
+#toggle-dark {
+    background: none;
+    border: 1px solid #8cdc97;
+    border-radius: 6px;
+    padding: 5px 12px;
+    cursor: pointer;
+    font-size: 0.85em;
+    color: #2c3e50;
+    font-family: 'Segoe UI', Verdana, Arial, sans-serif;
+    font-weight: bold;
+    transition: background 0.15s;
+}
+
+#toggle-dark:hover { background: #eafaf1; }
+
 .title {
     color: #2c3e50;
     font-family: 'Segoe UI', Verdana, Arial, sans-serif;
     text-align: center;
-    margin-top: 30px;
-    font-size: 2.5em;
+    margin: 24px 0 8px;
+    font-size: 2.2em;
     letter-spacing: 2px;
-}
-
-.github-link {
-    display: block;
-    text-align: center;
-    margin-bottom: 10px;
-    color: #2980b9;
-    font-weight: bold;
-    text-decoration: none;
-}
-
-.github-link:hover {
-    text-decoration: underline;
 }
 
 hr {
@@ -96,16 +146,23 @@ hr {
     box-shadow: 0 4px 16px rgba(44, 62, 80, 0.25);
 }
 
+.dark-mode .site-header {
+    background: #1e2229;
+    border-bottom-color: #2980b9;
+}
+
+.dark-mode .brand { color: #eafaf1; }
+.dark-mode .brand:hover { color: #8cdc97; }
+.dark-mode .github-link { color: #8cdc97; }
+.dark-mode #toggle-dark { border-color: #2980b9; color: #eafaf1; }
+.dark-mode #toggle-dark:hover { background: #2c3440; }
+
 .dark-mode .title {
     color: #eafaf1;
 }
 
 .dark-mode hr {
     border-top: 2px solid #2980b9;
-}
-
-.dark-mode .github-link {
-    color: #8cdc97;
 }
 
 .dark-mode #databox span {
@@ -117,7 +174,6 @@ nav {
     display: flex;
     justify-content: center;
     gap: 6px;
-    padding: 10px 0 0;
 }
 
 nav a {

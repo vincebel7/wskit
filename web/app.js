@@ -79,7 +79,13 @@ const COLLECTOR_EDITABLE_FIELDS = ['name', 'device_type', 'sensor_type', 'locati
 // GET /api/collectors
 app.get('/api/collectors', async (_req, res) => {
     try {
-        const [rows] = await pool.query("SELECT * FROM collectors ORDER BY created_at DESC");
+        const [rows] = await pool.query(
+            `SELECT c.*, MAX(r.recorded_at) AS last_seen
+             FROM collectors c
+             LEFT JOIN sensor_readings r ON r.collector_id = c.id
+             GROUP BY c.id
+             ORDER BY c.created_at DESC`
+        );
         res.json(rows);
     } catch (e) {
         res.status(500).json({ error: e.message });

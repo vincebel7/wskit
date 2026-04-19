@@ -17,11 +17,17 @@
         .join('\n    ');
 
     document.getElementById('page-header').innerHTML =
-        `<h1 class="title">${cfg.icon ? cfg.icon + ' ' : ''}${cfg.title || 'wskit'}</h1>` +
-        `<button id="toggle-dark" style="margin: 0 auto; display: block;">${isDark ? 'Light Mode' : 'Dark Mode'}</button>` +
-        `<br><nav>\n    ${navHtml}\n</nav>` +
-        `<a class="github-link" href="https://github.com/vincebel7/wskit" target="_blank">GitHub</a>` +
-        `<hr>`;
+        `<header class="site-header">` +
+          `<div class="site-header-inner">` +
+            `<a class="brand" href="/">wskit</a>` +
+            `<nav>${navHtml}</nav>` +
+            `<div class="header-controls">` +
+              `<a class="github-link" href="https://github.com/vincebel7/wskit" target="_blank">GitHub</a>` +
+              `<button id="toggle-dark">${isDark ? 'Light Mode' : 'Dark Mode'}</button>` +
+            `</div>` +
+          `</div>` +
+        `</header>` +
+        (cfg.title ? `<h1 class="title">${cfg.icon ? cfg.icon + ' ' : ''}${cfg.title}</h1>` : '');
 
     document.getElementById('toggle-dark').onclick = function () {
         document.body.classList.toggle('dark-mode');

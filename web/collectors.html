@@ -50,12 +50,14 @@ function buildCard(collector) {
 
     const meta = document.createElement('div');
     meta.className = 'collector-meta';
-    const created = new Date(collector.created_at).toLocaleString('en-US');
+    const created  = new Date(collector.created_at).toLocaleString('en-US');
+    const lastSeen = collector.last_seen ? new Date(collector.last_seen).toLocaleString('en-US') : 'Never';
     meta.innerHTML =
         `Device: ${esc(collector.device_type) || '—'}<br>` +
         `Sensors: ${esc(collector.sensor_type) || '—'}<br>` +
         `Location: ${esc(collector.location) || '—'}<br>` +
-        `Registered: ${created}`;
+        `Registered: ${created}<br>` +
+        `Last seen: ${lastSeen}`;
 
     header.appendChild(left);
     header.appendChild(meta);
@@ -164,7 +166,8 @@ function buildCard(collector) {
                 `Device: ${esc(updated.device_type) || '—'}<br>` +
                 `Sensors: ${esc(updated.sensor_type) || '—'}<br>` +
                 `Location: ${esc(updated.location) || '—'}<br>` +
-                `Registered: ${created}`;
+                `Registered: ${created}<br>` +
+                `Last seen: ${lastSeen}`;
 
             // Sync input defaults
             fields.forEach(f => { inputs[f.key].value = updated[f.key] || ''; });

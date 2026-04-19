@@ -3,43 +3,46 @@
 <script>window._headerConfig = { title: 'Weather Readings', icon: '🌡️', nav: 'live' };</script>
 <div id="page-header"></div>
 <script src="/js/header.js"></script>
-<p id="newest-label">&#8593; Newest first &mdash; showing last 100 readings</p>
+<p id="newest-label">&#8593; Newest first &mdash; showing last 20 readings</p>
 <div id="databox"></div>
 
 <script>
 const socket = io();
-const MAX_READINGS = 100;
+const MAX_READINGS = 20;
+const shownIds = new Set();
+const dataDiv = document.getElementById('databox');
 
-socket.on('data-from-server', function (data) {
-	var jsonData = JSON.parse(data);
-	console.log(jsonData);
-	var temp_c = jsonData['temperature'];
-	var humidity = jsonData['humidity'];
-	var pressure = jsonData['pressure'];
-	var time = jsonData['recorded_at'];
-	var id = jsonData['collector_id'];
+const timeOptions = { hour12: true, hour: '2-digit', minute: '2-digit', second: '2-digit' };
 
-	const timeOptions = {
-		hour12: true,
-		hour: "2-digit",
-		minute: "2-digit",
-		second: "2-digit"
-	};
+function displayReading(jsonData) {
+	if (jsonData.id != null) {
+		if (shownIds.has(jsonData.id)) return;
+		shownIds.add(jsonData.id);
+	}
 
-	var newtime = new Date(time).toLocaleTimeString("en-US", timeOptions);
-	var temp_f = ((temp_c * 9/5) + 32).toFixed(1);
-	var humidityFmt = Number(humidity).toFixed(1);
+	const temp_f = ((jsonData.temperature * 9/5) + 32).toFixed(1);
+	const humidity = Number(jsonData.humidity).toFixed(1);
+	const newtime = new Date(jsonData.recorded_at).toLocaleTimeString('en-US', timeOptions);
+	const displayId = jsonData.collector_name
+		? jsonData.collector_name + ' (' + jsonData.collector_id + ')'
+		: jsonData.collector_id;
+	const message = newtime + ': HOST ' + displayId + ', TEMPERATURE ' + temp_f + '° F, HUMIDITY ' + humidity + '%, PRESSURE ' + jsonData.pressure;
 
-	var displayId = jsonData['collector_name'] ? jsonData['collector_name'] + ' (' + id + ')' : id;
-	var message = newtime + ": HOST " + displayId + ", TEMPERATURE " + temp_f + "° F, HUMIDITY " + humidityFmt + "%, PRESSURE " + pressure;
-	var dataDiv = document.getElementById('databox');
-
-	var msgSpan = document.createElement("span");
-	msgSpan.textContent = message;
-	dataDiv.insertBefore(msgSpan, dataDiv.firstChild);
+	const span = document.createElement('span');
+	span.textContent = message;
+	dataDiv.insertBefore(span, dataDiv.firstChild);
 
 	while (dataDiv.children.length > MAX_READINGS) {
 		dataDiv.removeChild(dataDiv.lastChild);
 	}
+}
+
+fetch('/api/readings?limit=20')
+	.then(r => r.json())
+	.then(rows => rows.reverse().forEach(displayReading))
+	.catch(() => {});
+
+socket.on('data-from-server', function (data) {
+	displayReading(JSON.parse(data));
 });
 </script>
