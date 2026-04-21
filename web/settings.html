@@ -3,49 +3,62 @@
 <div id="page-header"></div>
 <script src="/js/header.js"></script>
 
-<div style="max-width: 700px; margin: 0 auto; padding: 0 16px;">
+<div class="settings-layout">
 
-    <!-- Primary Collector -->
-    <div class="settings-section">
-        <h2>Primary Collector</h2>
-        <p class="section-desc">The collector used as the main data source across the dashboard.</p>
-        <div class="settings-grid">
-            <label>
-                Collector
-                <select id="primary-collector-select">
-                    <option value="">None</option>
-                </select>
-            </label>
-        </div>
-        <div class="settings-footer">
-            <button class="btn btn-primary" id="save-primary">Save</button>
-            <span class="settings-status" id="primary-status"></span>
+    <!-- Left: Collectors -->
+    <div class="settings-col-left">
+        <div class="settings-section">
+            <h2>Collectors</h2>
+            <p class="section-desc">Registered sensor nodes.</p>
+            <div id="collectors-container"></div>
         </div>
     </div>
 
-    <!-- Weather Underground -->
-    <div class="settings-section">
-        <h2>Weather Underground</h2>
-        <p class="section-desc">Upload readings to a Weather Underground personal weather station. Not yet active.</p>
-        <div class="settings-grid">
-            <label>
-                Station ID
-                <input type="text" id="wu-station-id" placeholder="KXXXXXXXX">
-            </label>
-            <label>
-                API Key
-                <input type="password" id="wu-api-key" placeholder="••••••••••••••••">
-            </label>
-        </div>
-        <div class="settings-footer">
-            <button class="btn btn-primary" id="save-wu" disabled title="Not yet implemented">Save</button>
-            <span class="settings-status" id="wu-status" style="color: var(--text-muted);">Coming soon</span>
-        </div>
-    </div>
+    <!-- Right: config panels -->
+    <div class="settings-col-right">
 
+        <div class="settings-section">
+            <h2>Primary Collector</h2>
+            <p class="section-desc">The collector used as the main data source across the dashboard.</p>
+            <div class="settings-grid">
+                <label>
+                    Collector
+                    <select id="primary-collector-select">
+                        <option value="">None</option>
+                    </select>
+                </label>
+            </div>
+            <div class="settings-footer">
+                <button class="btn btn-primary" id="save-primary">Save</button>
+                <span class="settings-status" id="primary-status"></span>
+            </div>
+        </div>
+
+        <div class="settings-section">
+            <h2>Weather Underground</h2>
+            <p class="section-desc">Upload readings to a Weather Underground personal weather station. Not yet active.</p>
+            <div class="settings-grid">
+                <label>
+                    Station ID
+                    <input type="text" id="wu-station-id" placeholder="KXXXXXXXX">
+                </label>
+                <label>
+                    API Key
+                    <input type="password" id="wu-api-key" placeholder="••••••••••••••••">
+                </label>
+            </div>
+            <div class="settings-footer">
+                <button class="btn btn-primary" id="save-wu" disabled title="Not yet implemented">Save</button>
+                <span class="settings-status" id="wu-status" style="color: var(--text-muted);">Coming soon</span>
+            </div>
+        </div>
+
+    </div>
 </div>
 
 <script>
+// ── Settings persistence ──────────────────────────────────────────────────────
+
 const STORAGE_KEY = 'wskit-settings';
 
 function loadSettings() {
@@ -53,25 +66,195 @@ function loadSettings() {
 }
 
 function saveSettings(patch) {
-    const current = loadSettings();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, ...patch }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...loadSettings(), ...patch }));
 }
 
-// Populate collector dropdown, then restore saved selection
-fetch('/api/collectors')
-    .then(r => r.json())
-    .then(collectors => {
-        const sel = document.getElementById('primary-collector-select');
+// ── Collectors ────────────────────────────────────────────────────────────────
+
+async function loadCollectors() {
+    const container = document.getElementById('collectors-container');
+    const primarySel = document.getElementById('primary-collector-select');
+    try {
+        const res = await fetch('/api/collectors');
+        if (!res.ok) throw new Error((await res.json()).error);
+        const collectors = await res.json();
+
+        // Populate Primary Collector dropdown
         collectors.forEach(c => {
             const opt = document.createElement('option');
             opt.value = c.id;
             opt.textContent = c.name ? `${c.name} (${c.id})` : c.id;
-            sel.appendChild(opt);
+            primarySel.appendChild(opt);
         });
         const saved = loadSettings().primaryCollectorId || '';
-        if ([...sel.options].some(o => o.value === saved)) sel.value = saved;
-    })
-    .catch(() => {});
+        if ([...primarySel.options].some(o => o.value === saved)) primarySel.value = saved;
+
+        // Render collector cards
+        container.innerHTML = '';
+        if (!collectors.length) {
+            const p = document.createElement('p');
+            p.style.cssText = 'color: var(--text-muted); font-family: monospace;';
+            p.textContent = 'No collectors registered yet.';
+            container.appendChild(p);
+            return;
+        }
+        collectors.forEach(c => container.appendChild(buildCard(c)));
+    } catch (err) {
+        const p = document.createElement('p');
+        p.style.cssText = 'color: #e74c3c; font-family: monospace;';
+        p.textContent = `Error loading collectors: ${err.message}`;
+        container.appendChild(p);
+    }
+}
+
+function buildCard(collector) {
+    const card = document.createElement('div');
+    card.className = 'collector-card';
+
+    const header = document.createElement('div');
+    header.className = 'card-header';
+
+    const left = document.createElement('div');
+    const nameEl = document.createElement('h3');
+    nameEl.textContent = collector.name || '(unnamed)';
+    const macEl = document.createElement('div');
+    macEl.className = 'mac';
+    macEl.textContent = collector.id;
+    left.appendChild(nameEl);
+    left.appendChild(macEl);
+
+    const meta = document.createElement('div');
+    meta.className = 'collector-meta';
+    const created  = new Date(collector.created_at).toLocaleString('en-US');
+    const lastSeen = collector.last_seen ? new Date(collector.last_seen).toLocaleString('en-US') : 'Never';
+    meta.innerHTML =
+        `Device: ${esc(collector.device_type) || '—'}<br>` +
+        `Sensors: ${esc(collector.sensor_type) || '—'}<br>` +
+        `Location: ${esc(collector.location) || '—'}<br>` +
+        `Registered: ${created}<br>` +
+        `Last seen: ${lastSeen}`;
+
+    header.appendChild(left);
+    header.appendChild(meta);
+    card.appendChild(header);
+
+    const editBtn = document.createElement('button');
+    editBtn.className = 'btn btn-primary';
+    editBtn.textContent = 'Edit';
+    editBtn.style.marginTop = '10px';
+    card.appendChild(editBtn);
+
+    const form = document.createElement('form');
+    form.className = 'edit-form';
+    form.style.display = 'none';
+
+    const fields = [
+        { key: 'name',        label: 'Name' },
+        { key: 'device_type', label: 'Device type', options: ['', 'ESP32', 'Arduino'] },
+        { key: 'sensor_type', label: 'Sensor type' },
+        { key: 'location',    label: 'Location' },
+    ];
+
+    const inputs = {};
+    fields.forEach(f => {
+        const lbl = document.createElement('label');
+        lbl.textContent = f.label;
+        let input;
+        if (f.options) {
+            input = document.createElement('select');
+            f.options.forEach(opt => {
+                const o = document.createElement('option');
+                o.value = opt;
+                o.textContent = opt || '—';
+                if ((collector[f.key] || '') === opt) o.selected = true;
+                input.appendChild(o);
+            });
+        } else {
+            input = document.createElement('input');
+            input.type = 'text';
+            input.value = collector[f.key] || '';
+        }
+        lbl.appendChild(input);
+        form.appendChild(lbl);
+        inputs[f.key] = input;
+    });
+
+    const actions = document.createElement('div');
+    actions.className = 'form-actions';
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'submit';
+    saveBtn.className = 'btn btn-save';
+    saveBtn.textContent = 'Save';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'btn btn-muted';
+    cancelBtn.textContent = 'Cancel';
+    actions.appendChild(saveBtn);
+    actions.appendChild(cancelBtn);
+    form.appendChild(actions);
+
+    const status = document.createElement('p');
+    status.className = 'save-status';
+    form.appendChild(status);
+    card.appendChild(form);
+
+    editBtn.onclick = () => {
+        form.style.display = 'grid';
+        editBtn.style.display = 'none';
+        status.textContent = '';
+    };
+
+    cancelBtn.onclick = () => {
+        form.style.display = 'none';
+        editBtn.style.display = '';
+    };
+
+    form.onsubmit = async (e) => {
+        e.preventDefault();
+        const body = {};
+        fields.forEach(f => { body[f.key] = inputs[f.key].value.trim() || null; });
+        saveBtn.disabled = true;
+        status.textContent = '';
+        try {
+            const res = await fetch(`/api/collectors/${encodeURIComponent(collector.id)}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            if (!res.ok) throw new Error((await res.json()).error);
+            const updated = await res.json();
+
+            nameEl.textContent = updated.name || '(unnamed)';
+            meta.innerHTML =
+                `Device: ${esc(updated.device_type) || '—'}<br>` +
+                `Sensors: ${esc(updated.sensor_type) || '—'}<br>` +
+                `Location: ${esc(updated.location) || '—'}<br>` +
+                `Registered: ${created}<br>` +
+                `Last seen: ${lastSeen}`;
+
+            fields.forEach(f => { inputs[f.key].value = updated[f.key] || ''; });
+            collector = updated;
+
+            status.style.color = 'var(--accent)';
+            status.textContent = 'Saved.';
+            setTimeout(() => { status.textContent = ''; }, 2000);
+        } catch (err) {
+            status.style.color = '#e74c3c';
+            status.textContent = `Error: ${err.message}`;
+        } finally {
+            saveBtn.disabled = false;
+        }
+    };
+
+    return card;
+}
+
+function esc(str) {
+    if (!str) return '';
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ── Primary Collector save ────────────────────────────────────────────────────
 
 document.getElementById('save-primary').onclick = function () {
     const id = document.getElementById('primary-collector-select').value;
@@ -81,4 +264,8 @@ document.getElementById('save-primary').onclick = function () {
     status.textContent = 'Saved.';
     setTimeout(() => { status.textContent = ''; }, 2000);
 };
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+loadCollectors();
 </script>

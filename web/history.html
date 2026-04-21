@@ -50,6 +50,14 @@
 <script>
 let lastRows = [];
 
+// Set "from" to 3 days ago in local time for the datetime-local input
+(function setDefaultFrom() {
+    const d = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const pad = n => String(n).padStart(2, '0');
+    document.getElementById('from-input').value =
+        `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+})();
+
 // Populate collector dropdown
 fetch('/api/collectors')
     .then(r => r.json())
@@ -148,4 +156,6 @@ function renderResults(rows) {
         tbody.appendChild(tr);
     });
 }
+
+document.getElementById('filter-form').requestSubmit();
 </script>
