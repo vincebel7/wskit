@@ -1,11 +1,7 @@
 (function () {
     const cfg = window._headerConfig || {};
-    const darkModeKey = 'weather-dark-mode';
 
-    if (cfg.title) document.title = cfg.title + ' \u2014 wskit';
-
-    const isDark = localStorage.getItem(darkModeKey) === 'true';
-    if (isDark) document.body.classList.add('dark-mode');
+    if (cfg.title) document.title = cfg.title + ' — wskit';
 
     const navLinks = [
         { href: '/',           label: 'Live',       key: 'live' },
@@ -23,16 +19,8 @@
             `<nav>${navHtml}</nav>` +
             `<div class="header-controls">` +
               `<a class="github-link" href="https://github.com/vincebel7/wskit" target="_blank">GitHub</a>` +
-              `<button id="toggle-dark">${isDark ? 'Light Mode' : 'Dark Mode'}</button>` +
             `</div>` +
           `</div>` +
         `</header>` +
         (cfg.title ? `<h1 class="title">${cfg.icon ? cfg.icon + ' ' : ''}${cfg.title}</h1>` : '');
-
-    document.getElementById('toggle-dark').onclick = function () {
-        document.body.classList.toggle('dark-mode');
-        const dark = document.body.classList.contains('dark-mode');
-        this.textContent = dark ? 'Light Mode' : 'Dark Mode';
-        localStorage.setItem(darkModeKey, dark);
-    };
 }());
