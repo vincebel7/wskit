@@ -1,18 +1,32 @@
 <link href="/css/style.css" rel="stylesheet" type="text/css">
 <script src="https://cdn.socket.io/4.4.0/socket.io.min.js" integrity="sha384-1fOn6VtTq3PWwfsOrk45LnYcGosJwzMHv+Xh/Jx5303FVOXzEnw0EpLv30mtjmlj" crossorigin="anonymous"></script>
-<script>window._headerConfig = { title: 'Weather Readings', icon: '🌡️', nav: 'live' };</script>
+<script>window._headerConfig = { title: 'Weather Readings', nav: 'live' };</script>
 <div id="page-header"></div>
 <script src="/js/header.js"></script>
-<p id="newest-label">&#8593; Newest first &mdash; showing last 20 readings</p>
-<div id="databox"></div>
+
+<div style="max-width: 1200px; margin: 0 auto; padding: 0 16px;">
+    <p id="newest-label">&#8593; Newest first &mdash; showing last 20 readings</p>
+    <div class="table-wrap">
+        <table class="data-table" id="live-table">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Collector</th>
+                    <th>Temp (°F)</th>
+                    <th>Humidity (%)</th>
+                    <th>Pressure (hPa)</th>
+                </tr>
+            </thead>
+            <tbody id="live-body"></tbody>
+        </table>
+    </div>
+</div>
 
 <script>
 const socket = io();
 const MAX_READINGS = 20;
 const shownIds = new Set();
-const dataDiv = document.getElementById('databox');
-
-const timeOptions = { hour12: true, hour: '2-digit', minute: '2-digit', second: '2-digit' };
+const tbody = document.getElementById('live-body');
 
 function displayReading(jsonData) {
 	if (jsonData.id != null) {
@@ -20,20 +34,25 @@ function displayReading(jsonData) {
 		shownIds.add(jsonData.id);
 	}
 
-	const temp_f = ((jsonData.temperature * 9/5) + 32).toFixed(1);
-	const humidity = Number(jsonData.humidity).toFixed(1);
-	const newtime = new Date(jsonData.recorded_at).toLocaleTimeString('en-US', timeOptions);
-	const displayId = jsonData.collector_name
+	const tempF    = jsonData.temperature != null ? ((jsonData.temperature * 9/5) + 32).toFixed(1) : '—';
+	const humidity = jsonData.humidity    != null ? Number(jsonData.humidity).toFixed(1)            : '—';
+	const pressure = jsonData.pressure    != null ? Number(jsonData.pressure).toFixed(2)            : '—';
+	const time     = new Date(jsonData.recorded_at).toLocaleString('en-US');
+	const name     = jsonData.collector_name
 		? jsonData.collector_name + ' (' + jsonData.collector_id + ')'
 		: jsonData.collector_id;
-	const message = newtime + ': HOST ' + displayId + ', TEMPERATURE ' + temp_f + '° F, HUMIDITY ' + humidity + '%, PRESSURE ' + jsonData.pressure;
 
-	const span = document.createElement('span');
-	span.textContent = message;
-	dataDiv.insertBefore(span, dataDiv.firstChild);
+	const tr = document.createElement('tr');
+	[time, name, tempF, humidity, pressure].forEach(val => {
+		const td = document.createElement('td');
+		td.textContent = val;
+		tr.appendChild(td);
+	});
 
-	while (dataDiv.children.length > MAX_READINGS) {
-		dataDiv.removeChild(dataDiv.lastChild);
+	tbody.insertBefore(tr, tbody.firstChild);
+
+	while (tbody.children.length > MAX_READINGS) {
+		tbody.removeChild(tbody.lastChild);
 	}
 }
 

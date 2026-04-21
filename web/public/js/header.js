@@ -7,6 +7,7 @@
         { href: '/',           label: 'Live',       key: 'live' },
         { href: '/history',    label: 'History',    key: 'history' },
         { href: '/collectors', label: 'Collectors', key: 'collectors' },
+        { href: '/settings',   label: 'Settings',   key: 'settings' },
     ];
     const navHtml = navLinks
         .map(l => `<a href="${l.href}"${l.key === cfg.nav ? ' class="active"' : ''}>${l.label}</a>`)

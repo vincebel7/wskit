@@ -1,0 +1,84 @@
+<link href="/css/style.css" rel="stylesheet" type="text/css">
+<script>window._headerConfig = { title: 'Settings', nav: 'settings' };</script>
+<div id="page-header"></div>
+<script src="/js/header.js"></script>
+
+<div style="max-width: 700px; margin: 0 auto; padding: 0 16px;">
+
+    <!-- Primary Collector -->
+    <div class="settings-section">
+        <h2>Primary Collector</h2>
+        <p class="section-desc">The collector used as the main data source across the dashboard.</p>
+        <div class="settings-grid">
+            <label>
+                Collector
+                <select id="primary-collector-select">
+                    <option value="">None</option>
+                </select>
+            </label>
+        </div>
+        <div class="settings-footer">
+            <button class="btn btn-primary" id="save-primary">Save</button>
+            <span class="settings-status" id="primary-status"></span>
+        </div>
+    </div>
+
+    <!-- Weather Underground -->
+    <div class="settings-section">
+        <h2>Weather Underground</h2>
+        <p class="section-desc">Upload readings to a Weather Underground personal weather station. Not yet active.</p>
+        <div class="settings-grid">
+            <label>
+                Station ID
+                <input type="text" id="wu-station-id" placeholder="KXXXXXXXX">
+            </label>
+            <label>
+                API Key
+                <input type="password" id="wu-api-key" placeholder="••••••••••••••••">
+            </label>
+        </div>
+        <div class="settings-footer">
+            <button class="btn btn-primary" id="save-wu" disabled title="Not yet implemented">Save</button>
+            <span class="settings-status" id="wu-status" style="color: var(--text-muted);">Coming soon</span>
+        </div>
+    </div>
+
+</div>
+
+<script>
+const STORAGE_KEY = 'wskit-settings';
+
+function loadSettings() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch { return {}; }
+}
+
+function saveSettings(patch) {
+    const current = loadSettings();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, ...patch }));
+}
+
+// Populate collector dropdown, then restore saved selection
+fetch('/api/collectors')
+    .then(r => r.json())
+    .then(collectors => {
+        const sel = document.getElementById('primary-collector-select');
+        collectors.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.id;
+            opt.textContent = c.name ? `${c.name} (${c.id})` : c.id;
+            sel.appendChild(opt);
+        });
+        const saved = loadSettings().primaryCollectorId || '';
+        if ([...sel.options].some(o => o.value === saved)) sel.value = saved;
+    })
+    .catch(() => {});
+
+document.getElementById('save-primary').onclick = function () {
+    const id = document.getElementById('primary-collector-select').value;
+    saveSettings({ primaryCollectorId: id });
+    const status = document.getElementById('primary-status');
+    status.style.color = 'var(--accent)';
+    status.textContent = 'Saved.';
+    setTimeout(() => { status.textContent = ''; }, 2000);
+};
+</script>
