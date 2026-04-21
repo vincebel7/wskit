@@ -31,7 +31,6 @@ app.get('/', (_req, res) => {
 });
 
 app.get('/history',    (_req, res) => res.sendFile(__dirname + "/history.html"));
-app.get('/collectors', (_req, res) => res.sendFile(__dirname + "/collectors.html"));
 app.get('/settings',   (_req, res) => res.sendFile(__dirname + "/settings.html"));
 
 app.use(express.static('public'));
