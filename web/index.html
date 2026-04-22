@@ -34,7 +34,7 @@ function popupHtml(d) {
     const id       = d.collector_id;
 
     return `<div class="collector-popup">
-        <div class="popup-name">${name}</div>
+        <div class="popup-name" style="${d.collector_id === primaryCollectorId ? 'color:#2ecc71' : ''}">${name}</div>
         <div class="popup-id">${id}</div>
         <div class="popup-readings">
             <div class="popup-row"><span class="popup-label">TEMP</span><span class="popup-value">${tempF}</span></div>

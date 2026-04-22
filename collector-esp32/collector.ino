@@ -1,19 +1,26 @@
 #include <ArduinoMqttClient.h>
 #include <DHT22.h>
+#include <Wire.h>
+#include <Adafruit_BME280.h>
 
 #if defined(ESP32)
   #include <WiFi.h>
   #define LEDPIN 2
   #define DHTPIN 4
+  #define I2C_SDA 21
+  #define I2C_SCL 22
 #elif defined(ARDUINO_SAMD_MKR1000)
   #include <WiFi101.h>
   #define LEDPIN A5
   #define DHTPIN A6
+  // MKR1000 I2C uses default Wire pins: SDA = 11, SCL = 12
 #else
   #error "Unsupported board. Please compile for ESP32 or MKR1000."
 #endif
 
 DHT22 dht(DHTPIN);
+Adafruit_BME280 bme;
+bool bmeAvailable = false;
 
 char ssid[] = "";
 char pass[] = "";
@@ -38,6 +45,14 @@ void setup() {
   digitalWrite(LEDPIN, LOW);
 
   Serial.begin(115200);
+
+  #if defined(ESP32)
+    Wire.begin(I2C_SDA, I2C_SCL);
+  #else
+    Wire.begin();
+  #endif
+  bmeAvailable = bme.begin(0x76) || bme.begin(0x77);
+  Serial.println(bmeAvailable ? "BME280 found" : "BME280 not found");
 
   // Boot indicator
   for (int i = 0; i < 3; i++) {
@@ -132,11 +147,17 @@ void loop() {
   bool dhtOk = !isnan(h) && !isnan(t);
   if (!dhtOk) Serial.println("DHT22 read error");
 
-  // When BME280 is added: read it here independently, track bmeOk
+  // --- Read BME280 (pressure) ---
+  float p = NAN;
+  bool bmeOk = false;
+  if (bmeAvailable) {
+    p = bme.readPressure() / 100.0F;  // Pa -> hPa
+    bmeOk = !isnan(p);
+    if (!bmeOk) Serial.println("BME280 read error");
+  }
 
   // Skip publish only if all sensors failed
-  // Extend condition to (!dhtOk && !bmeOk) when BME280 is added
-  if (!dhtOk) {
+  if (!dhtOk && !bmeOk) {
     Serial.println("All sensors failed, skipping publish");
     #if defined(ESP32)
       WiFi.disconnect(true);
@@ -154,7 +175,9 @@ void loop() {
     msg += ",\"temperature\": " + String(t, 1);
     msg += ",\"humidity\": " + String(h, 1);
   }
-  msg += ",\"pressure\": " + String(0);  // replace with BME280 reading
+  if (bmeOk) {
+    msg += ",\"pressure\": " + String(p, 1);
+  }
   msg += "}";
 
   // --- Publish ---
