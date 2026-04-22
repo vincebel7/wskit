@@ -80,10 +80,19 @@ const COLLECTOR_EDITABLE_FIELDS = ['name', 'device_type', 'sensor_type', 'locati
 app.get('/api/collectors', async (_req, res) => {
     try {
         const [rows] = await pool.query(
-            `SELECT c.*, MAX(r.recorded_at) AS last_seen
+            `SELECT c.id, c.name, c.device_type, c.sensor_type, c.location, c.lat, c.lng, c.created_at,
+                    lr.recorded_at AS last_seen,
+                    lr.temperature,
+                    lr.humidity,
+                    lr.pressure
              FROM collectors c
-             LEFT JOIN sensor_readings r ON r.collector_id = c.id
-             GROUP BY c.id
+             LEFT JOIN LATERAL (
+                 SELECT recorded_at, temperature, humidity, pressure
+                 FROM sensor_readings
+                 WHERE collector_id = c.id
+                 ORDER BY recorded_at DESC
+                 LIMIT 1
+             ) lr ON TRUE
              ORDER BY c.created_at DESC`
         );
         res.json(rows);

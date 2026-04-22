@@ -21,7 +21,7 @@ function formatTime(ts) {
 }
 
 // ── Map init ─────────────────────────────────────────────────────────────────
-const map = L.map('map', { zoomControl: true }).setView([39.5, -98.35], 5);
+const map = L.map('map', { zoomControl: true, closePopupOnClick: false }).setView([39.5, -98.35], 5);
 
 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
     attribution: 'Tiles &copy; Esri &mdash; Source: Esri, USGS, NOAA',
@@ -78,12 +78,30 @@ function addOrUpdateCollector(d) {
     if (collectors.has(d.collector_id)) {
         const entry = collectors.get(d.collector_id);
         entry.data = d;
-        entry.marker.getPopup().setContent(popupHtml(d));
+        if (entry.popup) entry.popup.setContent(popupHtml(d));
     } else {
-        const marker = L.marker([d.lat, d.lng], { icon: makeIcon(isPrimary) })
-            .bindPopup(popupHtml(d), { className: 'collector-popup-wrap', maxWidth: 260 })
-            .addTo(map);
-        collectors.set(d.collector_id, { marker, data: d });
+        const marker = L.marker([d.lat, d.lng], { icon: makeIcon(isPrimary) }).addTo(map);
+        const entry = { marker, data: d, popup: null };
+        collectors.set(d.collector_id, entry);
+
+        marker.on('click', () => {
+            if (entry.popup) {
+                entry.popup.remove();
+            } else {
+                entry.popup = L.popup({
+                    className: 'collector-popup-wrap',
+                    maxWidth: 260,
+                    autoClose: false,
+                    closeOnClick: false,
+                    offset: L.point(0, -20),
+                })
+                    .setLatLng([entry.data.lat, entry.data.lng])
+                    .setContent(popupHtml(entry.data))
+                    .addTo(map);
+                entry.popup.on('remove', () => { entry.popup = null; });
+            }
+        });
+
         syncHint();
     }
 }
@@ -119,9 +137,9 @@ function syncPrimaryIcon() {
                 collector_name: c.name || c.id,
                 lat:            parseFloat(c.lat),
                 lng:            parseFloat(c.lng),
-                temperature:    null,
-                humidity:       null,
-                pressure:       null,
+                temperature:    c.temperature,
+                humidity:       c.humidity,
+                pressure:       c.pressure,
                 recorded_at:    c.last_seen || c.created_at,
             });
         });
