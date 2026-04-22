@@ -1,5 +1,5 @@
 <link href="/css/style.css" rel="stylesheet" type="text/css">
-<script>window._headerConfig = { title: 'Settings', nav: 'settings' };</script>
+<script>window._headerConfig = { title: 'Settings', icon: '⚙️', nav: 'settings' };</script>
 <div id="page-header"></div>
 <script src="/js/header.js"></script>
 
@@ -90,7 +90,8 @@ async function loadCollectors() {
             container.appendChild(p);
             return;
         }
-        collectors.forEach(c => container.appendChild(buildCard(c)));
+        const primaryId = settings.primary_collector_id || null;
+        collectors.forEach(c => container.appendChild(buildCard(c, primaryId)));
     } catch (err) {
         const p = document.createElement('p');
         p.style.cssText = 'color: #e74c3c; font-family: monospace;';
@@ -99,7 +100,7 @@ async function loadCollectors() {
     }
 }
 
-function buildCard(collector) {
+function buildCard(collector, primaryId) {
     const card = document.createElement('div');
     card.className = 'collector-card';
 
@@ -109,6 +110,7 @@ function buildCard(collector) {
     const left = document.createElement('div');
     const nameEl = document.createElement('h3');
     nameEl.textContent = collector.name || '(unnamed)';
+    if (collector.id === primaryId) nameEl.style.color = '#2ecc71';
     const macEl = document.createElement('div');
     macEl.className = 'mac';
     macEl.textContent = collector.id;
