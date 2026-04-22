@@ -15,6 +15,11 @@
 <script>
 const socket = io();
 
+let serverTz = 'America/New_York';
+function formatTime(ts) {
+    return new Date(ts).toLocaleString('en-US', { timeZone: serverTz });
+}
+
 // ── Map init ─────────────────────────────────────────────────────────────────
 const map = L.map('map', { zoomControl: true }).setView([39.5, -98.35], 5);
 
@@ -29,7 +34,7 @@ function popupHtml(d) {
     const tempF    = d.temperature != null ? ((d.temperature * 9/5) + 32).toFixed(1) + '°F' : '—';
     const humidity = d.humidity    != null ? Number(d.humidity).toFixed(1) + '%'             : '—';
     const pressure = d.pressure    != null ? Number(d.pressure).toFixed(2) + ' hPa'          : '—';
-    const time     = new Date(d.recorded_at).toLocaleString('en-US');
+    const time     = formatTime(d.recorded_at);
     const name     = d.collector_name || d.collector_id;
     const id       = d.collector_id;
 
@@ -92,10 +97,15 @@ function syncPrimaryIcon() {
 // ── Load real collectors from API ────────────────────────────────────────────
 (async () => {
     try {
-        const [collectorsRes, settingsRes] = await Promise.all([
+        const [collectorsRes, settingsRes, configRes] = await Promise.all([
             fetch('/api/collectors'),
             fetch('/api/settings'),
+            fetch('/api/config'),
         ]);
+        if (configRes.ok) {
+            const config = await configRes.json();
+            if (config.tz) serverTz = config.tz;
+        }
         if (settingsRes.ok) {
             const settings = await settingsRes.json();
             primaryCollectorId = settings.primary_collector_id || null;

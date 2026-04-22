@@ -49,6 +49,12 @@
 
 <script>
 let lastRows = [];
+let serverTz = 'America/New_York';
+function formatTime(ts) {
+    return new Date(ts).toLocaleString('en-US', { timeZone: serverTz });
+}
+
+fetch('/api/config').then(r => r.ok ? r.json() : null).then(c => { if (c?.tz) serverTz = c.tz; }).catch(() => {});
 
 // Set "from" to 3 days ago in local time for the datetime-local input
 (function setDefaultFrom() {
@@ -114,7 +120,7 @@ document.getElementById('export-csv').onclick = function() {
         const tempF    = r.temperature != null ? ((r.temperature * 9/5) + 32).toFixed(1) : '';
         const humidity = r.humidity    != null ? Number(r.humidity).toFixed(1)            : '';
         const pressure = r.pressure    != null ? Number(r.pressure).toFixed(2)            : '';
-        const time     = new Date(r.recorded_at).toLocaleString('en-US');
+        const time     = formatTime(r.recorded_at);
         const name     = r.collector_name ? `${r.collector_name} (${r.collector_id})` : r.collector_id;
         return [time, name, tempF, humidity, pressure];
     })];
@@ -142,7 +148,7 @@ function renderResults(rows) {
         const tempF    = r.temperature != null ? ((r.temperature * 9/5) + 32).toFixed(1) : '—';
         const humidity = r.humidity    != null ? Number(r.humidity).toFixed(1)            : '—';
         const pressure = r.pressure    != null ? Number(r.pressure).toFixed(2)            : '—';
-        const time     = new Date(r.recorded_at).toLocaleString('en-US');
+        const time     = formatTime(r.recorded_at);
         const name     = r.collector_name ? `${r.collector_name} (${r.collector_id})` : r.collector_id;
 
         const tr = document.createElement('tr');

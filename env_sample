@@ -1,3 +1,6 @@
+# Timezone (IANA format, e.g. America/New_York, America/Chicago, UTC)
+TZ=America/New_York
+
 # MQTT credentials
 # Used by the MQTT broker (to create the password file) and the subscriber (to connect).
 # Collectors use these same credentials, hardcoded in collector.ino before flashing.

@@ -56,6 +56,42 @@ else
   ok "Created .env from env_sample."
 fi
 
+echo "Select a timezone:"
+echo "  1) America/New_York    (Eastern)"
+echo "  2) America/Chicago     (Central)"
+echo "  3) America/Denver      (Mountain)"
+echo "  4) America/Los_Angeles (Pacific)"
+echo "  5) America/Anchorage   (Alaska)"
+echo "  6) Pacific/Honolulu    (Hawaii)"
+echo "  7) UTC"
+echo "  8) Other (enter IANA name manually)"
+echo ""
+read -rp "Choice [1]: " TZ_CHOICE; TZ_CHOICE="${TZ_CHOICE:-1}"
+
+case "$TZ_CHOICE" in
+  1) TZ_VAL="America/New_York" ;;
+  2) TZ_VAL="America/Chicago" ;;
+  3) TZ_VAL="America/Denver" ;;
+  4) TZ_VAL="America/Los_Angeles" ;;
+  5) TZ_VAL="America/Anchorage" ;;
+  6) TZ_VAL="Pacific/Honolulu" ;;
+  7) TZ_VAL="UTC" ;;
+  8)
+    while true; do
+      read -rp "  IANA timezone (e.g. Europe/London): " TZ_VAL
+      if [ -f "/usr/share/zoneinfo/${TZ_VAL}" ]; then
+        break
+      else
+        warn "'${TZ_VAL}' not found in /usr/share/zoneinfo. Check https://en.wikipedia.org/wiki/List_of_tz_database_time_zones and try again."
+      fi
+    done
+    ;;
+  *) err "Invalid choice '${TZ_CHOICE}'. Re-run the script to configure timezone." ;;
+esac
+
+sed -i "s|TZ=.*|TZ=${TZ_VAL}|" .env
+ok "Timezone set to ${TZ_VAL}."
+
 echo "MQTT credentials (used by collectors and the subscriber):"
 read -rsp "  Publisher password: "  MQTT_PUB_PASS; echo ""
 read -rsp "  Subscriber password: " MQTT_SUB_PASS; echo ""

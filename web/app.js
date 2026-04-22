@@ -207,6 +207,11 @@ async function queryReadings(req, res, collectorId = null) {
     }
 }
 
+// GET /api/config — server-side configuration for clients (e.g. timezone)
+app.get('/api/config', (_req, res) => {
+    res.json({ tz: process.env.TZ || 'America/New_York' });
+});
+
 // GET /api/readings?collector_id=&from=&to=&limit=
 app.get('/api/readings', (req, res) => queryReadings(req, res));
 

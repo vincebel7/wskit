@@ -57,16 +57,26 @@
 </div>
 
 <script>
+let serverTz = 'America/New_York';
+function formatTime(ts) {
+    return new Date(ts).toLocaleString('en-US', { timeZone: serverTz });
+}
+
 // ── Collectors ────────────────────────────────────────────────────────────────
 
 async function loadCollectors() {
     const container = document.getElementById('collectors-container');
     const primarySel = document.getElementById('primary-collector-select');
     try {
-        const [collectorsRes, settingsRes] = await Promise.all([
+        const [collectorsRes, settingsRes, configRes] = await Promise.all([
             fetch('/api/collectors'),
             fetch('/api/settings'),
+            fetch('/api/config'),
         ]);
+        if (configRes.ok) {
+            const config = await configRes.json();
+            if (config.tz) serverTz = config.tz;
+        }
         if (!collectorsRes.ok) throw new Error((await collectorsRes.json()).error);
         const collectors = await collectorsRes.json();
         const settings = settingsRes.ok ? await settingsRes.json() : {};
@@ -119,8 +129,8 @@ function buildCard(collector, primaryId) {
 
     const meta = document.createElement('div');
     meta.className = 'collector-meta';
-    const created  = new Date(collector.created_at).toLocaleString('en-US');
-    const lastSeen = collector.last_seen ? new Date(collector.last_seen).toLocaleString('en-US') : 'Never';
+    const created  = formatTime(collector.created_at);
+    const lastSeen = collector.last_seen ? formatTime(collector.last_seen) : 'Never';
     meta.innerHTML =
         `Device: ${esc(collector.device_type) || '—'}<br>` +
         `Sensors: ${esc(collector.sensor_type) || '—'}<br>` +
