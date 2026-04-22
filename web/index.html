@@ -6,25 +6,17 @@
 <script src="/js/header.js"></script>
 
 <div id="map"></div>
+<div id="map-no-collectors-hint" class="map-hint" style="display:none">
+    No collectors on the map yet.<br>
+    Go to <a href="/settings">Settings</a> to add coordinates to your collectors.
+</div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <script>
 const socket = io();
 
-// ── Hardcoded test device ────────────────────────────────────────────────────
-const TEST_DEVICE = {
-    collector_id:   'AA:BB:CC:DD:EE:FF',
-    collector_name: 'Test Station',
-    lat:            42.33014307395171,
-    lng:            -83.04066467154485,
-    temperature:    21.8,
-    humidity:       51.3,
-    pressure:       1013.40,
-    recorded_at:    new Date().toISOString(),
-};
-
 // ── Map init ─────────────────────────────────────────────────────────────────
-const map = L.map('map', { zoomControl: true }).setView([TEST_DEVICE.lat, TEST_DEVICE.lng], 15);
+const map = L.map('map', { zoomControl: true }).setView([39.5, -98.35], 4);
 
 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
     attribution: 'Tiles &copy; Esri &mdash; Source: Esri, USGS, NOAA',
@@ -33,16 +25,6 @@ L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/
 }).addTo(map);
 
 // ── Marker helpers ────────────────────────────────────────────────────────────
-function makeIcon() {
-    return L.divIcon({
-        className: 'collector-marker-wrap',
-        html: '<div class="collector-marker-dot"></div>',
-        iconSize: [18, 18],
-        iconAnchor: [9, 9],
-        popupAnchor: [0, -14],
-    });
-}
-
 function popupHtml(d) {
     const tempF    = d.temperature != null ? ((d.temperature * 9/5) + 32).toFixed(1) + '°F' : '—';
     const humidity = d.humidity    != null ? Number(d.humidity).toFixed(1) + '%'             : '—';
@@ -66,31 +48,60 @@ function popupHtml(d) {
 // ── Marker registry ───────────────────────────────────────────────────────────
 // keyed by collector_id → { marker, data }
 const collectors = new Map();
+let primaryCollectorId = null;
+
+const noCollectorsHint = document.getElementById('map-no-collectors-hint');
+
+function syncHint() {
+    noCollectorsHint.style.display = collectors.size === 0 ? 'block' : 'none';
+}
+
+function makeIcon(isPrimary) {
+    return L.divIcon({
+        className: 'collector-marker-wrap',
+        html: `<div class="collector-marker-dot${isPrimary ? ' primary' : ''}"></div>`,
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
+        popupAnchor: [0, -14],
+    });
+}
 
 function addOrUpdateCollector(d) {
     if (!d.lat || !d.lng) return;
+    const isPrimary = d.collector_id === primaryCollectorId;
 
     if (collectors.has(d.collector_id)) {
         const entry = collectors.get(d.collector_id);
         entry.data = d;
         entry.marker.getPopup().setContent(popupHtml(d));
     } else {
-        const marker = L.marker([d.lat, d.lng], { icon: makeIcon() })
+        const marker = L.marker([d.lat, d.lng], { icon: makeIcon(isPrimary) })
             .bindPopup(popupHtml(d), { className: 'collector-popup-wrap', maxWidth: 260 })
             .addTo(map);
         collectors.set(d.collector_id, { marker, data: d });
+        syncHint();
     }
 }
 
-// ── Seed hardcoded test device ────────────────────────────────────────────────
-addOrUpdateCollector(TEST_DEVICE);
+function syncPrimaryIcon() {
+    collectors.forEach((entry, id) => {
+        entry.marker.setIcon(makeIcon(id === primaryCollectorId));
+    });
+}
 
 // ── Load real collectors from API ────────────────────────────────────────────
 (async () => {
     try {
-        const res = await fetch('/api/collectors');
-        if (!res.ok) return;
-        const list = await res.json();
+        const [collectorsRes, settingsRes] = await Promise.all([
+            fetch('/api/collectors'),
+            fetch('/api/settings'),
+        ]);
+        if (settingsRes.ok) {
+            const settings = await settingsRes.json();
+            primaryCollectorId = settings.primary_collector_id || null;
+        }
+        if (!collectorsRes.ok) { syncHint(); return; }
+        const list = await collectorsRes.json();
         list.forEach(c => {
             if (!c.lat || !c.lng) return;
             addOrUpdateCollector({
@@ -105,6 +116,7 @@ addOrUpdateCollector(TEST_DEVICE);
             });
         });
     } catch (_) {}
+    syncHint();
 })();
 
 // ── Live updates via Socket.IO ────────────────────────────────────────────────

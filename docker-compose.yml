@@ -43,7 +43,7 @@ services:
       MYSQL_USER: ${DB_USER}
       MYSQL_PASSWORD: ${DB_PASS}
     volumes:
-      - ./sensordump.sql:/docker-entrypoint-initdb.d/sensordump.sql
+      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
       - mysql-data:/var/lib/mysql
     network_mode: host
     restart: unless-stopped
@@ -57,7 +57,7 @@ services:
   #   1. Comment out the mysql service above and the mysql-data volume below.
   #   2. Remove the mysql depends_on entries from mqtt-subscriber and web above.
   #   3. Set DB_HOST to your external MySQL host in .env.
-  #   4. Create the schema manually: mysql -h host -u user -p sensordata < sensordump.sql
+  #   4. Create the schema manually: mysql -h host -u user -p sensordata < schema.sql
 
 volumes:
   mysql-data:

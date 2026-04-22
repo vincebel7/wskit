@@ -124,7 +124,7 @@ case "$MYSQL_MODE" in
     if [[ ! "$INIT_SCHEMA" =~ ^[Nn]$ ]]; then
       mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" \
         -e "CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\`;"
-      mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < sensordump.sql
+      mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < schema.sql
       ok "Schema created on ${DB_HOST}."
     fi
 

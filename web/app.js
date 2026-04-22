@@ -128,6 +128,43 @@ app.patch('/api/collectors/:id', async (req, res) => {
     }
 });
 
+// GET /api/settings
+app.get('/api/settings', async (_req, res) => {
+    try {
+        const [rows] = await pool.query("SELECT `key`, `value` FROM app_settings");
+        const settings = {};
+        rows.forEach(r => { settings[r.key] = r.value; });
+        res.json(settings);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// PUT /api/settings  — body: { key: string, value: string|null }
+app.put('/api/settings', async (req, res) => {
+    const { key, value } = req.body;
+    if (!key || typeof key !== 'string') return res.status(400).json({ error: 'key is required' });
+
+    if (key === 'primary_collector_id' && value) {
+        const [check] = await pool.query("SELECT id FROM collectors WHERE id = ?", [value]);
+        if (!check.length) return res.status(404).json({ error: 'Collector not found' });
+    }
+
+    try {
+        if (value == null) {
+            await pool.query("DELETE FROM app_settings WHERE `key` = ?", [key]);
+        } else {
+            await pool.query(
+                "INSERT INTO app_settings (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)",
+                [key, value]
+            );
+        }
+        res.json({ key, value: value ?? null });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // Shared readings query used by both /api/readings and /api/collectors/:id/readings
 // Query params: from (ISO timestamp), to (ISO timestamp), limit (default 100, max 1000)
 // /api/readings also accepts: collector_id

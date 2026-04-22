@@ -14,6 +14,14 @@ CREATE TABLE IF NOT EXISTS `collectors` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+-- Global application settings (key/value). Known keys:
+--   primary_collector_id  VARCHAR(17)  — collector id; enforced unique by PRIMARY KEY, not a FK
+CREATE TABLE IF NOT EXISTS `app_settings` (
+  `key`        VARCHAR(64)   NOT NULL,
+  `value`      VARCHAR(256)  DEFAULT NULL,
+  PRIMARY KEY (`key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE IF NOT EXISTS `sensor_readings` (
   `id`           INT           NOT NULL AUTO_INCREMENT,
   `collector_id` VARCHAR(17)   NOT NULL,

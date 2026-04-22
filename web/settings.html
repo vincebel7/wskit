@@ -57,27 +57,19 @@
 </div>
 
 <script>
-// ── Settings persistence ──────────────────────────────────────────────────────
-
-const STORAGE_KEY = 'wskit-settings';
-
-function loadSettings() {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch { return {}; }
-}
-
-function saveSettings(patch) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...loadSettings(), ...patch }));
-}
-
 // ── Collectors ────────────────────────────────────────────────────────────────
 
 async function loadCollectors() {
     const container = document.getElementById('collectors-container');
     const primarySel = document.getElementById('primary-collector-select');
     try {
-        const res = await fetch('/api/collectors');
-        if (!res.ok) throw new Error((await res.json()).error);
-        const collectors = await res.json();
+        const [collectorsRes, settingsRes] = await Promise.all([
+            fetch('/api/collectors'),
+            fetch('/api/settings'),
+        ]);
+        if (!collectorsRes.ok) throw new Error((await collectorsRes.json()).error);
+        const collectors = await collectorsRes.json();
+        const settings = settingsRes.ok ? await settingsRes.json() : {};
 
         // Populate Primary Collector dropdown
         collectors.forEach(c => {
@@ -86,7 +78,7 @@ async function loadCollectors() {
             opt.textContent = c.name ? `${c.name} (${c.id})` : c.id;
             primarySel.appendChild(opt);
         });
-        const saved = loadSettings().primaryCollectorId || '';
+        const saved = settings.primary_collector_id || '';
         if ([...primarySel.options].some(o => o.value === saved)) primarySel.value = saved;
 
         // Render collector cards
@@ -131,6 +123,7 @@ function buildCard(collector) {
         `Device: ${esc(collector.device_type) || '—'}<br>` +
         `Sensors: ${esc(collector.sensor_type) || '—'}<br>` +
         `Location: ${esc(collector.location) || '—'}<br>` +
+        `Lat/Lng: ${collector.lat != null && collector.lng != null ? `${collector.lat}, ${collector.lng}` : '—'}<br>` +
         `Registered: ${created}<br>` +
         `Last seen: ${lastSeen}`;
 
@@ -240,6 +233,7 @@ function buildCard(collector) {
                 `Device: ${esc(updated.device_type) || '—'}<br>` +
                 `Sensors: ${esc(updated.sensor_type) || '—'}<br>` +
                 `Location: ${esc(updated.location) || '—'}<br>` +
+                `Lat/Lng: ${updated.lat != null && updated.lng != null ? `${updated.lat}, ${updated.lng}` : '—'}<br>` +
                 `Registered: ${created}<br>` +
                 `Last seen: ${lastSeen}`;
 
@@ -267,13 +261,26 @@ function esc(str) {
 
 // ── Primary Collector save ────────────────────────────────────────────────────
 
-document.getElementById('save-primary').onclick = function () {
+document.getElementById('save-primary').onclick = async function () {
     const id = document.getElementById('primary-collector-select').value;
-    saveSettings({ primaryCollectorId: id });
     const status = document.getElementById('primary-status');
-    status.style.color = 'var(--accent)';
-    status.textContent = 'Saved.';
-    setTimeout(() => { status.textContent = ''; }, 2000);
+    this.disabled = true;
+    try {
+        const res = await fetch('/api/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key: 'primary_collector_id', value: id || null }),
+        });
+        if (!res.ok) throw new Error((await res.json()).error);
+        status.style.color = 'var(--accent)';
+        status.textContent = 'Saved.';
+    } catch (err) {
+        status.style.color = '#e74c3c';
+        status.textContent = `Error: ${err.message}`;
+    } finally {
+        this.disabled = false;
+        setTimeout(() => { status.textContent = ''; }, 2000);
+    }
 };
 
 // ── Init ──────────────────────────────────────────────────────────────────────

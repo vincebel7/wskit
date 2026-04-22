@@ -47,7 +47,7 @@ mqtt-server/           Mosquitto broker (Dockerfile + config + password files)
 mqtt-subscriber/       Python bridge: MQTT → Redis (+ stubbed MySQL export)
 redis/                 Redis container (Dockerfile + minimal config)
 web/                   Node.js Express + Socket.IO live dashboard
-sensordump.sql         MySQL schema (dht11_data table) — stubbed, not active
+schema.sql         MySQL schema (dht11_data table) — stubbed, not active
 docker-compose.yml     Orchestrates all four server-side services
 env_sample             Template for .env (copy and fill before deploying)
 server-setup.sh        Partial server setup script (marked WIP)
@@ -136,7 +136,7 @@ Hardcoded `TZ=America/Detroit` in both `mqtt-subscriber/Dockerfile` and `web/Doc
 - **DHT22 temperature overflow fallback** (`collector/dht.py:182–185`): `if c > 125: c = mybytes[2]` — undefined behavior on edge values; only matters for the deprecated Orange Pi path but worth noting.
 
 ### Technical Debt
-- **MySQL export not implemented**: `insert_mysql()` in `mqtt-subscriber/subscribe-client.py` is a stub. Schema exists in `sensordump.sql` (table named `dht11_data` — anachronistic). `USE_MYSQL` env var has no effect.
+- **MySQL export not implemented**: `insert_mysql()` in `mqtt-subscriber/subscribe-client.py` is a stub. Schema exists in `schema.sql` (table named `dht11_data` — anachronistic). `USE_MYSQL` env var has no effect.
 - **No data persistence**: Redis is ephemeral. Restarting containers loses all history. No historical query capability.
 - **No REST API**: Only Socket.IO real-time push. No endpoint to fetch historical data or query by time range.
 - **No web authentication**: Dashboard is open to anyone who can reach port 8080.
