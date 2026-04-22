@@ -22,6 +22,25 @@ DHT22 dht(DHTPIN);
 Adafruit_BME280 bme;
 bool bmeAvailable = false;
 
+// Auto-restart after this many consecutive network failures
+const int maxNetworkFailures = 5;
+int networkFailures = 0;
+
+void maybeRestartAfterFailure() {
+  networkFailures++;
+  Serial.print("Network failure #");
+  Serial.println(networkFailures);
+  if (networkFailures >= maxNetworkFailures) {
+    Serial.println("Too many failures, restarting device...");
+    delay(1000);
+    #if defined(ESP32)
+      ESP.restart();
+    #elif defined(ARDUINO_SAMD_MKR1000)
+      NVIC_SystemReset();
+    #endif
+  }
+}
+
 char ssid[] = "";
 char pass[] = "";
 
@@ -45,6 +64,9 @@ void setup() {
   digitalWrite(LEDPIN, LOW);
 
   Serial.begin(115200);
+
+  // Don't let MQTT connect block forever if broker is unreachable
+  mqttClient.setConnectionTimeout(5000);
 
   #if defined(ESP32)
     Wire.begin(I2C_SDA, I2C_SCL);
@@ -90,7 +112,7 @@ void setup() {
 
 void loop() {
   // --- Ensure WiFi connection ---
-  if (WiFi.status() != WL_CONNECTED) {
+  if (WiFi.status() != WL_CONNECTED || (uint32_t)WiFi.localIP() == 0) {
     Serial.println("Connecting to WiFi...");
     #if defined(ESP32)
       WiFi.disconnect(true);
@@ -117,6 +139,7 @@ void loop() {
         WiFi.disconnect();
       #endif
 
+      maybeRestartAfterFailure();
       delay(publishInterval * 1000);
       return;
     }
@@ -135,6 +158,7 @@ void loop() {
         WiFi.disconnect();
       #endif
 
+      maybeRestartAfterFailure();
       delay(publishInterval * 1000);
       return;
     }
@@ -187,6 +211,9 @@ void loop() {
 
   Serial.print("Published: ");
   Serial.println(msg);
+
+  // Publish succeeded, reset the failure counter
+  networkFailures = 0;
 
   // --- Blink LED once ---
   digitalWrite(LEDPIN, HIGH);
