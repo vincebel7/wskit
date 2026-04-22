@@ -153,6 +153,8 @@ function buildCard(collector) {
         { key: 'device_type', label: 'Device type', options: ['', 'ESP32', 'Arduino'] },
         { key: 'sensor_type', label: 'Sensor type' },
         { key: 'location',    label: 'Location' },
+        { key: 'lat',         label: 'Latitude',  type: 'number', step: 'any', placeholder: '42.3314' },
+        { key: 'lng',         label: 'Longitude', type: 'number', step: 'any', placeholder: '-83.0458' },
     ];
 
     const inputs = {};
@@ -171,8 +173,10 @@ function buildCard(collector) {
             });
         } else {
             input = document.createElement('input');
-            input.type = 'text';
-            input.value = collector[f.key] || '';
+            input.type = f.type || 'text';
+            if (f.step) input.step = f.step;
+            if (f.placeholder) input.placeholder = f.placeholder;
+            input.value = collector[f.key] ?? '';
         }
         lbl.appendChild(input);
         form.appendChild(lbl);
@@ -212,7 +216,14 @@ function buildCard(collector) {
     form.onsubmit = async (e) => {
         e.preventDefault();
         const body = {};
-        fields.forEach(f => { body[f.key] = inputs[f.key].value.trim() || null; });
+        fields.forEach(f => {
+            const raw = inputs[f.key].value.trim();
+            if (f.type === 'number') {
+                body[f.key] = raw === '' ? null : parseFloat(raw);
+            } else {
+                body[f.key] = raw || null;
+            }
+        });
         saveBtn.disabled = true;
         status.textContent = '';
         try {

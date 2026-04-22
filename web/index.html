@@ -85,11 +85,33 @@ function addOrUpdateCollector(d) {
 // ── Seed hardcoded test device ────────────────────────────────────────────────
 addOrUpdateCollector(TEST_DEVICE);
 
+// ── Load real collectors from API ────────────────────────────────────────────
+(async () => {
+    try {
+        const res = await fetch('/api/collectors');
+        if (!res.ok) return;
+        const list = await res.json();
+        list.forEach(c => {
+            if (!c.lat || !c.lng) return;
+            addOrUpdateCollector({
+                collector_id:   c.id,
+                collector_name: c.name || c.id,
+                lat:            parseFloat(c.lat),
+                lng:            parseFloat(c.lng),
+                temperature:    null,
+                humidity:       null,
+                pressure:       null,
+                recorded_at:    c.last_seen || c.created_at,
+            });
+        });
+    } catch (_) {}
+})();
+
 // ── Live updates via Socket.IO ────────────────────────────────────────────────
 socket.on('data-from-server', function (raw) {
     const d = JSON.parse(raw);
-    // When collectors have lat/lng from the API, this will place them on the map.
-    // For now only devices with coordinates are rendered.
+    if (d.lat) d.lat = parseFloat(d.lat);
+    if (d.lng) d.lng = parseFloat(d.lng);
     addOrUpdateCollector(d);
 });
 </script>

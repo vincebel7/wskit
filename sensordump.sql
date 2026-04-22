@@ -1,5 +1,6 @@
 -- wskit schema
 -- Database: sensordata
+-- To add lat/lng to an existing database: ALTER TABLE collectors ADD COLUMN lat DECIMAL(9,6) DEFAULT NULL, ADD COLUMN lng DECIMAL(9,6) DEFAULT NULL;
 
 CREATE TABLE IF NOT EXISTS `collectors` (
   `id`          VARCHAR(17)   NOT NULL,         -- MAC address (xx:xx:xx:xx:xx:xx)
@@ -7,6 +8,8 @@ CREATE TABLE IF NOT EXISTS `collectors` (
   `device_type` VARCHAR(32)   DEFAULT NULL,      -- e.g. "ESP32", "MKR1000"
   `sensor_type` VARCHAR(64)   DEFAULT NULL,      -- e.g. "DHT22", "DHT22+BME280"
   `location`    VARCHAR(128)  DEFAULT NULL,
+  `lat`         DECIMAL(9,6)  DEFAULT NULL,
+  `lng`         DECIMAL(9,6)  DEFAULT NULL,
   `created_at`  TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

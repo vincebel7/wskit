@@ -54,7 +54,7 @@ setInterval(async () => {
     try {
         const [rows] = await pool.query(
             `SELECT r.id, r.collector_id, r.recorded_at, r.temperature, r.humidity, r.pressure,
-                    c.name AS collector_name
+                    c.name AS collector_name, c.lat, c.lng
              FROM sensor_readings r
              JOIN collectors c ON r.collector_id = c.id
              WHERE r.id > ?
@@ -74,7 +74,7 @@ io.on('connection', _socket => console.log("New socket connection established"))
 
 // --- REST API ---
 
-const COLLECTOR_EDITABLE_FIELDS = ['name', 'device_type', 'sensor_type', 'location'];
+const COLLECTOR_EDITABLE_FIELDS = ['name', 'device_type', 'sensor_type', 'location', 'lat', 'lng'];
 
 // GET /api/collectors
 app.get('/api/collectors', async (_req, res) => {
