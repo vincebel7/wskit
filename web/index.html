@@ -130,7 +130,7 @@ function addOrUpdateCollector(d) {
         let marker = null;
         if (d.lat && d.lng) {
             marker = L.marker([d.lat, d.lng], { icon: makeIcon(isPrimary) })
-                .bindPopup(popupHtml(d), { className: 'collector-popup-wrap', maxWidth: 260 })
+                .bindPopup(popupHtml(d), { className: 'collector-popup-wrap', maxWidth: 260, autoClose: false })
                 .addTo(map);
         }
         collectors.set(d.collector_id, { marker, data: d });
@@ -146,76 +146,107 @@ function syncPrimaryIcon() {
     });
 }
 
-// ── Smart popup placement ─────────────────────────────────────────────────────
-// Tries candidates in preference order; picks first that fits within the map
-// and doesn't cover any other marker dot.
-map.on('popupopen', function (e) {
-    const popup  = e.popup;
-    const source = popup._source;
-    if (!source) return;
+// ── Multi-popup layout ────────────────────────────────────────────────────────
+// Lays out ALL currently open popups so none overlap each other or stray
+// outside the map. Uses a greedy left-to-right placement pass.
+// newPopupEl: the element of the popup that just opened (hidden until we're done).
+function layoutAllPopups(newPopupEl) {
+    const mapSize = map.getSize();
+    const PAD     = 10;
 
-    // Reset to neutral offset and render so we can measure popup dimensions.
-    popup.options.offset = L.point(0, 0);
-    popup.update();
-
-    const el = popup.getElement();
-    if (!el) return;
-    el.style.visibility = 'hidden';
-
-    requestAnimationFrame(() => {
+    // Snapshot every open popup's marker position and rendered dimensions.
+    const entries = [];
+    collectors.forEach(({ marker }) => {
+        if (!marker || !marker.isPopupOpen()) return;
+        const popup = marker.getPopup();
+        const el    = popup.getElement();
+        if (!el) return;
         const { width: pw, height: ph } = el.getBoundingClientRect();
-        const mapSize = map.getSize();
-        const mPx     = map.latLngToContainerPoint(source.getLatLng());
-        const PAD     = 10;
-        // popupAnchor from makeIcon is [0, -14]; offset is added on top.
-        // The anchor point (bottom of popup tip) lands at: mPx + [0,-14] + [ox,oy].
-        // The full popup (content + tip) grows upward from that anchor.
-        function bbox(ox, oy) {
-            const ax = mPx.x + ox;
-            const ay = mPx.y - 14 + oy;
-            return { left: ax - pw / 2, right: ax + pw / 2, top: ay - ph, bottom: ay };
-        }
+        entries.push({ marker, popup, mPx: map.latLngToContainerPoint(marker.getLatLng()), pw, ph });
+    });
 
-        // Collect other marker centres in container px (with a small hit-radius).
-        const otherPts = [];
-        collectors.forEach(({ marker }) => {
-            if (!marker || marker === source) return;
-            const p = map.latLngToContainerPoint(marker.getLatLng());
-            otherPts.push({ x: p.x, y: p.y, r: 12 });
+    if (!entries.length) { if (newPopupEl) newPopupEl.style.visibility = ''; return; }
+
+    // Sort left-to-right for a deterministic greedy order.
+    entries.sort((a, b) => a.mPx.x - b.mPx.x);
+
+    // popupAnchor is [0, -14]: tip bottom is at (mPx.x + ox, mPx.y - 14 + oy).
+    // The full popup box (including tip) grows upward from that point.
+    function makeBbox(mPx, pw, ph, ox, oy) {
+        const ax = mPx.x + ox, ay = mPx.y - 14 + oy;
+        return { left: ax - pw / 2, right: ax + pw / 2, top: ay - ph, bottom: ay };
+    }
+
+    function overlaps(a, b) {
+        return a.left < b.right + 4 && a.right > b.left - 4 &&
+               a.top  < b.bottom + 4 && a.bottom > b.top - 4;
+    }
+
+    const placedRects = [];
+    const results     = [];
+
+    for (const { marker, popup, mPx, pw, ph } of entries) {
+        // Marker dots to avoid (hit radius 12px around centre).
+        const dotPts = [];
+        collectors.forEach(({ marker: m }) => {
+            if (!m || m === marker) return;
+            const p = map.latLngToContainerPoint(m.getLatLng());
+            dotPts.push({ x: p.x, y: p.y, r: 12 });
         });
 
         function valid(b) {
-            if (b.left   < PAD || b.right  > mapSize.x - PAD ||
-                b.top    < PAD || b.bottom > mapSize.y - PAD) return false;
-            return otherPts.every(p =>
-                p.x - p.r >= b.right || p.x + p.r <= b.left ||
-                p.y - p.r >= b.bottom || p.y + p.r <= b.top
-            );
+            if (b.left < PAD || b.right > mapSize.x - PAD ||
+                b.top  < PAD || b.bottom > mapSize.y - PAD) return false;
+            for (const p of dotPts)
+                if (p.x > b.left - p.r && p.x < b.right + p.r &&
+                    p.y > b.top  - p.r && p.y < b.bottom + p.r) return false;
+            for (const r of placedRects)
+                if (overlaps(b, r)) return false;
+            return true;
         }
 
         const half = pw / 2 + 10;
-        // "down" shifts the popup below the marker: anchor moves down past the
-        // marker dot (9px radius) plus the full popup height and some breathing room.
-        const down  = ph + 14 + 9 + 8;
+        const down = ph + 14 + 9 + 8;
 
         const candidates = [
-            [0,      0   ],   // above-centre  (default)
-            [half,   0   ],   // above-right
-            [-half,  0   ],   // above-left
-            [0,      down],   // below-centre
-            [half,   down],   // below-right
-            [-half,  down],   // below-left
+            [0,      0   ],  // above-centre
+            [half,   0   ],  // above-right
+            [-half,  0   ],  // above-left
+            [0,      down],  // below-centre
+            [half,   down],  // below-right
+            [-half,  down],  // below-left
         ];
 
         let chosen = candidates[0];
         for (const [ox, oy] of candidates) {
-            if (valid(bbox(ox, oy))) { chosen = [ox, oy]; break; }
+            if (valid(makeBbox(mPx, pw, ph, ox, oy))) { chosen = [ox, oy]; break; }
         }
 
-        popup.options.offset = L.point(chosen[0], chosen[1]);
+        results.push({ popup, ox: chosen[0], oy: chosen[1] });
+        placedRects.push(makeBbox(mPx, pw, ph, chosen[0], chosen[1]));
+    }
+
+    // Apply all offsets in one batch, then reveal the new popup.
+    for (const { popup, ox, oy } of results) {
+        popup.options.offset = L.point(ox, oy);
         popup.update();
-        el.style.visibility = '';
-    });
+    }
+    if (newPopupEl) newPopupEl.style.visibility = '';
+}
+
+map.on('popupopen', function (e) {
+    const el = e.popup.getElement();
+    if (!e.popup._source) return;
+    // Reset offset and hide the incoming popup while we compute layout.
+    e.popup.options.offset = L.point(0, 0);
+    e.popup.update();
+    if (el) el.style.visibility = 'hidden';
+    requestAnimationFrame(() => layoutAllPopups(el));
+});
+
+// Re-layout remaining popups when one closes so they can reclaim better positions.
+map.on('popupclose', function () {
+    requestAnimationFrame(() => layoutAllPopups(null));
 });
 
 // ── Load collectors from API ──────────────────────────────────────────────────
