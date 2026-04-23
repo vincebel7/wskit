@@ -5,10 +5,25 @@
 <div id="page-header"></div>
 <script src="/js/header.js"></script>
 
-<div id="map"></div>
-<div id="map-no-collectors-hint" class="map-hint" style="display:none">
-    No collectors on the map yet.<br>
-    Go to <a href="/settings">Settings</a> to add coordinates to your collectors.
+<div id="view-toggle">
+    <button id="btn-map"  class="view-btn active" onclick="setView('map')">Map</button>
+    <button id="btn-list" class="view-btn"         onclick="setView('list')">List</button>
+</div>
+
+<div id="map-view">
+    <div id="map"></div>
+    <div id="map-no-collectors-hint" class="map-hint" style="display:none">
+        No collectors on the map yet.<br>
+        Go to <a href="/settings">Settings</a> to add coordinates to your collectors.
+    </div>
+</div>
+
+<div id="list-view" style="display:none">
+    <div id="collector-list"></div>
+    <div id="list-no-collectors-hint" class="list-hint" style="display:none">
+        No collectors found.<br>
+        Connect a collector or check your server configuration.
+    </div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
@@ -16,8 +31,14 @@
 const socket = io();
 
 let serverTz = 'America/New_York';
-function formatTime(ts) {
-    return new Date(ts).toLocaleString('en-US', { timeZone: serverTz });
+
+// ── View toggle ───────────────────────────────────────────────────────────────
+function setView(v) {
+    document.getElementById('map-view').style.display  = v === 'map'  ? 'block' : 'none';
+    document.getElementById('list-view').style.display = v === 'list' ? 'block' : 'none';
+    document.getElementById('btn-map').classList.toggle('active',  v === 'map');
+    document.getElementById('btn-list').classList.toggle('active', v === 'list');
+    if (v === 'map') map.invalidateSize();
 }
 
 // ── Map init ─────────────────────────────────────────────────────────────────
@@ -29,36 +50,61 @@ L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/
     maxZoom: 21,
 }).addTo(map);
 
-// ── Marker helpers ────────────────────────────────────────────────────────────
+// ── Shared data helpers ───────────────────────────────────────────────────────
+function fmtTemp(v)     { return v != null ? ((v * 9/5) + 32).toFixed(1) + '°F' : '—'; }
+function fmtHumidity(v) { return v != null ? Number(v).toFixed(1) + '%'          : '—'; }
+function fmtPressure(v) { return v != null ? Number(v).toFixed(2) + ' hPa'       : '—'; }
+function fmtTime(v)     { return v        ? new Date(v).toLocaleString('en-US', { timeZone: serverTz }) : '—'; }
+
+// ── Map popup HTML ────────────────────────────────────────────────────────────
 function popupHtml(d) {
-    const tempF    = d.temperature != null ? ((d.temperature * 9/5) + 32).toFixed(1) + '°F' : '—';
-    const humidity = d.humidity    != null ? Number(d.humidity).toFixed(1) + '%'             : '—';
-    const pressure = d.pressure    != null ? Number(d.pressure).toFixed(2) + ' hPa'          : '—';
-    const time     = formatTime(d.recorded_at);
     const name     = d.collector_name || d.collector_id;
-    const id       = d.collector_id;
+    const location = d.location || null;
 
     return `<div class="collector-popup">
         <div class="popup-name" style="${d.collector_id === primaryCollectorId ? 'color:#2ecc71' : ''}">${name}</div>
-        <div class="popup-id">${id}</div>
+        <div class="popup-id">${d.collector_id}</div>
+        ${location ? `<div class="popup-location">${location}</div>` : ''}
         <div class="popup-readings">
-            <div class="popup-row"><span class="popup-label">TEMP</span><span class="popup-value">${tempF}</span></div>
-            <div class="popup-row"><span class="popup-label">HUMIDITY</span><span class="popup-value">${humidity}</span></div>
-            <div class="popup-row"><span class="popup-label">PRESSURE</span><span class="popup-value">${pressure}</span></div>
-            <div class="popup-row"><span class="popup-label">UPDATED</span><span class="popup-value popup-time">${time}</span></div>
+            <div class="popup-row"><span class="popup-label">TEMP</span><span class="popup-value">${fmtTemp(d.temperature)}</span></div>
+            <div class="popup-row"><span class="popup-label">HUMIDITY</span><span class="popup-value">${fmtHumidity(d.humidity)}</span></div>
+            <div class="popup-row"><span class="popup-label">PRESSURE</span><span class="popup-value">${fmtPressure(d.pressure)}</span></div>
+            <div class="popup-row"><span class="popup-label">UPDATED</span><span class="popup-value popup-time">${fmtTime(d.recorded_at)}</span></div>
         </div>
     </div>`;
 }
 
-// ── Marker registry ───────────────────────────────────────────────────────────
-// keyed by collector_id → { marker, data }
+// ── List card HTML ────────────────────────────────────────────────────────────
+function listCardHtml(d) {
+    const name      = d.collector_name || d.collector_id;
+    const location  = d.location || null;
+    const isPrimary = d.collector_id === primaryCollectorId;
+
+    return `<div class="list-card${isPrimary ? ' primary' : ''}" id="lc-${CSS.escape(d.collector_id)}">
+        <div class="list-card-name${isPrimary ? ' primary' : ''}">${name}</div>
+        <div class="list-card-id">${d.collector_id}</div>
+        ${location ? `<div class="list-card-location">${location}</div>` : ''}
+        <div class="list-readings">
+            <div class="list-row"><span class="list-label">TEMP</span><span class="list-value">${fmtTemp(d.temperature)}</span></div>
+            <div class="list-row"><span class="list-label">HUMIDITY</span><span class="list-value">${fmtHumidity(d.humidity)}</span></div>
+            <div class="list-row"><span class="list-label">PRESSURE</span><span class="list-value">${fmtPressure(d.pressure)}</span></div>
+            <div class="list-row"><span class="list-label">UPDATED</span><span class="list-value list-time">${fmtTime(d.recorded_at)}</span></div>
+        </div>
+    </div>`;
+}
+
+// ── Collector registry ────────────────────────────────────────────────────────
+// keyed by collector_id → { marker: L.Marker|null, data: object }
 const collectors = new Map();
 let primaryCollectorId = null;
 
-const noCollectorsHint = document.getElementById('map-no-collectors-hint');
+function syncMapHint() {
+    const hasMarkers = [...collectors.values()].some(e => e.marker);
+    document.getElementById('map-no-collectors-hint').style.display = hasMarkers ? 'none' : 'block';
+}
 
-function syncHint() {
-    noCollectorsHint.style.display = collectors.size === 0 ? 'block' : 'none';
+function syncListHint() {
+    document.getElementById('list-no-collectors-hint').style.display = collectors.size === 0 ? 'block' : 'none';
 }
 
 function makeIcon(isPrimary) {
@@ -72,47 +118,107 @@ function makeIcon(isPrimary) {
 }
 
 function addOrUpdateCollector(d) {
-    if (!d.lat || !d.lng) return;
     const isPrimary = d.collector_id === primaryCollectorId;
 
     if (collectors.has(d.collector_id)) {
         const entry = collectors.get(d.collector_id);
-        entry.data = d;
-        if (entry.popup) entry.popup.setContent(popupHtml(d));
+        entry.data = Object.assign({}, entry.data, d);
+        if (entry.marker) entry.marker.getPopup().setContent(popupHtml(entry.data));
+        const existing = document.getElementById('lc-' + CSS.escape(d.collector_id));
+        if (existing) existing.outerHTML = listCardHtml(entry.data);
     } else {
-        const marker = L.marker([d.lat, d.lng], { icon: makeIcon(isPrimary) }).addTo(map);
-        const entry = { marker, data: d, popup: null };
-        collectors.set(d.collector_id, entry);
-
-        marker.on('click', () => {
-            if (entry.popup) {
-                entry.popup.remove();
-            } else {
-                entry.popup = L.popup({
-                    className: 'collector-popup-wrap',
-                    maxWidth: 260,
-                    autoClose: false,
-                    closeOnClick: false,
-                    offset: L.point(0, -20),
-                })
-                    .setLatLng([entry.data.lat, entry.data.lng])
-                    .setContent(popupHtml(entry.data))
-                    .addTo(map);
-                entry.popup.on('remove', () => { entry.popup = null; });
-            }
-        });
-
-        syncHint();
+        let marker = null;
+        if (d.lat && d.lng) {
+            marker = L.marker([d.lat, d.lng], { icon: makeIcon(isPrimary) })
+                .bindPopup(popupHtml(d), { className: 'collector-popup-wrap', maxWidth: 260 })
+                .addTo(map);
+        }
+        collectors.set(d.collector_id, { marker, data: d });
+        document.getElementById('collector-list').insertAdjacentHTML('beforeend', listCardHtml(d));
+        syncMapHint();
+        syncListHint();
     }
 }
 
 function syncPrimaryIcon() {
     collectors.forEach((entry, id) => {
-        entry.marker.setIcon(makeIcon(id === primaryCollectorId));
+        if (entry.marker) entry.marker.setIcon(makeIcon(id === primaryCollectorId));
     });
 }
 
-// ── Load real collectors from API ────────────────────────────────────────────
+// ── Smart popup placement ─────────────────────────────────────────────────────
+// Tries candidates in preference order; picks first that fits within the map
+// and doesn't cover any other marker dot.
+map.on('popupopen', function (e) {
+    const popup  = e.popup;
+    const source = popup._source;
+    if (!source) return;
+
+    // Reset to neutral offset and render so we can measure popup dimensions.
+    popup.options.offset = L.point(0, 0);
+    popup.update();
+
+    const el = popup.getElement();
+    if (!el) return;
+    el.style.visibility = 'hidden';
+
+    requestAnimationFrame(() => {
+        const { width: pw, height: ph } = el.getBoundingClientRect();
+        const mapSize = map.getSize();
+        const mPx     = map.latLngToContainerPoint(source.getLatLng());
+        const PAD     = 10;
+        // popupAnchor from makeIcon is [0, -14]; offset is added on top.
+        // The anchor point (bottom of popup tip) lands at: mPx + [0,-14] + [ox,oy].
+        // The full popup (content + tip) grows upward from that anchor.
+        function bbox(ox, oy) {
+            const ax = mPx.x + ox;
+            const ay = mPx.y - 14 + oy;
+            return { left: ax - pw / 2, right: ax + pw / 2, top: ay - ph, bottom: ay };
+        }
+
+        // Collect other marker centres in container px (with a small hit-radius).
+        const otherPts = [];
+        collectors.forEach(({ marker }) => {
+            if (!marker || marker === source) return;
+            const p = map.latLngToContainerPoint(marker.getLatLng());
+            otherPts.push({ x: p.x, y: p.y, r: 12 });
+        });
+
+        function valid(b) {
+            if (b.left   < PAD || b.right  > mapSize.x - PAD ||
+                b.top    < PAD || b.bottom > mapSize.y - PAD) return false;
+            return otherPts.every(p =>
+                p.x - p.r >= b.right || p.x + p.r <= b.left ||
+                p.y - p.r >= b.bottom || p.y + p.r <= b.top
+            );
+        }
+
+        const half = pw / 2 + 10;
+        // "down" shifts the popup below the marker: anchor moves down past the
+        // marker dot (9px radius) plus the full popup height and some breathing room.
+        const down  = ph + 14 + 9 + 8;
+
+        const candidates = [
+            [0,      0   ],   // above-centre  (default)
+            [half,   0   ],   // above-right
+            [-half,  0   ],   // above-left
+            [0,      down],   // below-centre
+            [half,   down],   // below-right
+            [-half,  down],   // below-left
+        ];
+
+        let chosen = candidates[0];
+        for (const [ox, oy] of candidates) {
+            if (valid(bbox(ox, oy))) { chosen = [ox, oy]; break; }
+        }
+
+        popup.options.offset = L.point(chosen[0], chosen[1]);
+        popup.update();
+        el.style.visibility = '';
+    });
+});
+
+// ── Load collectors from API ──────────────────────────────────────────────────
 (async () => {
     try {
         const [collectorsRes, settingsRes, configRes] = await Promise.all([
@@ -128,26 +234,28 @@ function syncPrimaryIcon() {
             const settings = await settingsRes.json();
             primaryCollectorId = settings.primary_collector_id || null;
         }
-        if (!collectorsRes.ok) { syncHint(); return; }
+        if (!collectorsRes.ok) { syncMapHint(); syncListHint(); return; }
         const list = await collectorsRes.json();
         list.forEach(c => {
-            if (!c.lat || !c.lng) return;
             addOrUpdateCollector({
                 collector_id:   c.id,
                 collector_name: c.name || c.id,
-                lat:            parseFloat(c.lat),
-                lng:            parseFloat(c.lng),
-                temperature:    c.temperature,
-                humidity:       c.humidity,
-                pressure:       c.pressure,
+                location:       c.location || null,
+                lat:            c.lat ? parseFloat(c.lat) : null,
+                lng:            c.lng ? parseFloat(c.lng) : null,
+                temperature:    c.temperature ?? null,
+                humidity:       c.humidity ?? null,
+                pressure:       c.pressure ?? null,
                 recorded_at:    c.last_seen || c.created_at,
             });
         });
     } catch (_) {}
-    syncHint();
-    if (collectors.size > 0) {
-        const bounds = L.latLngBounds([...collectors.values()].map(e => [e.data.lat, e.data.lng]));
-        map.fitBounds(bounds, { padding: [60, 60], maxZoom: 14 });
+    syncMapHint();
+    syncListHint();
+    const withCoords = [...collectors.values()].filter(e => e.marker);
+    if (withCoords.length > 0) {
+        const bounds = L.latLngBounds(withCoords.map(e => [e.data.lat, e.data.lng]));
+        map.fitBounds(bounds, { padding: [60, 60] });
     }
 })();
 

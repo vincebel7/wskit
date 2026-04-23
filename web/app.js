@@ -54,7 +54,7 @@ setInterval(async () => {
     try {
         const [rows] = await pool.query(
             `SELECT r.id, r.collector_id, r.recorded_at, r.temperature, r.humidity, r.pressure,
-                    c.name AS collector_name, c.lat, c.lng
+                    c.name AS collector_name, c.lat, c.lng, c.location
              FROM sensor_readings r
              JOIN collectors c ON r.collector_id = c.id
              WHERE r.id > ?
