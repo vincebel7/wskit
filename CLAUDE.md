@@ -1,6 +1,6 @@
 # wskit — Claude Context
 
-DIY weather station system. Distributed sensor nodes publish readings over MQTT to a self-hosted, containerized hub that streams live data to a web dashboard.
+DIY weather station system. Distributed sensor nodes publish readings over MQTT to a self-hosted, containerized hub that stores them in MySQL and serves a live web dashboard.
 
 Primary goals going forward: software robustness, documentation cleanup, hardware schematic (CAD), and a 3D-printed Stephenson screen enclosure in PETG for outdoor deployment.
 
@@ -9,30 +9,30 @@ Primary goals going forward: software robustness, documentation cleanup, hardwar
 ## Architecture
 
 ```
-[ESP32 / MKR1000]                    [Server (Docker Compose)]
-  DHT22 sensor                        ┌─────────────────────────────────┐
-  reads temp + humidity               │  Mosquitto MQTT  (port 1883)    │
-  → publishes JSON via WiFi/MQTT ────►│  mqtt-subscriber (Python)        │
-                                      │    → adds server timestamp       │
-                                      │    → publishes to Redis          │
-                                      │  Redis  (channel: DHT-data)      │
-                                      │  web/app.js  (Express + Socket.IO│
-                                      │    port 8080)                    │
-                                      └─────────────────────────────────┘
-                                                  │
-                                          Browser dashboard
-                                       (live scrolling log)
+[ESP32 / MKR1000]                     [Server (Docker Compose, network_mode: host)]
+  BME280 and/or DHT22                  ┌──────────────────────────────────────────┐
+  reads temp/humidity/pressure         │  mqtt-server: Mosquitto (port 1883)      │
+  → publishes JSON via WiFi/MQTT ─────►│  mqtt-subscriber (Python)                │
+  (ESP32 deep sleeps between reads)    │    → adds UTC server timestamp           │
+                                       │    → inserts into MySQL                  │
+                                       │  mysql: MySQL 8.0 (volume mysql-data)    │
+                                       │  web/app.js (Express + Socket.IO, 8080)  │
+                                       │    → polls MySQL every 5 s for new rows  │
+                                       │    → pushes them to browsers via Socket.IO│
+                                       │    → REST API for collectors/readings    │
+                                       └──────────────────────────────────────────┘
+                                                        │
+                                           Browser: live dashboard + map,
+                                           History page, Settings page
 ```
 
 **MQTT message (collector → broker):**
 ```json
-{ "id": "MAC_ADDRESS", "temperature": 23.5, "humidity": 45.2, "pressure": 0 }
+{ "id": "38:18:2B:8A:1D:B0", "temperature": 22.1, "humidity": 47.4, "pressure": 1003.6 }
 ```
+`temperature` (°C), `humidity` (%) and `pressure` (hPa) are each omitted when unavailable.
 
-**After subscriber enrichment (→ Redis):**
-```json
-{ "id": "...", "temperature": 23.5, "humidity": 45.2, "pressure": 0, "time": "2025-04-19T14:30:45+00:00" }
-```
+**Subscriber** adds `"time"` (UTC ISO 8601), auto-registers unknown collector IDs in `collectors`, and inserts a row into `sensor_readings`.
 
 MQTT topic: `General` (flat, no namespacing — all collectors share one topic)
 
@@ -41,18 +41,17 @@ MQTT topic: `General` (flat, no namespacing — all collectors share one topic)
 ## Directory Map
 
 ```
-collector/             Orange Pi Python collector — DEPRECATED, do not extend
-collector-esp32/       Active Arduino firmware for ESP32 + MKR1000
-mqtt-server/           Mosquitto broker (Dockerfile + config + password files)
-mqtt-subscriber/       Python bridge: MQTT → Redis (+ stubbed MySQL export)
-redis/                 Redis container (Dockerfile + minimal config)
-web/                   Node.js Express + Socket.IO live dashboard
-schema.sql         MySQL schema (dht11_data table) — stubbed, not active
-docker-compose.yml     Orchestrates all four server-side services
-env_sample             Template for .env (copy and fill before deploying)
-server-setup.sh        Partial server setup script (marked WIP)
-dht-circuit.jpg        DHT22 breadboard wiring diagram (raster, not editable)
-temperature-data-collector-1.jpg  Container architecture diagram
+collector-esp32/          Active Arduino firmware for ESP32 + MKR1000
+collector-opi-deprecated/ Orange Pi Python collector — DEPRECATED, do not extend
+mqtt-server/              Mosquitto broker (Dockerfile, config, entrypoint that generates the password file from .env)
+mqtt-subscriber/          Python bridge: MQTT → MySQL
+web/                      Node.js Express + Socket.IO dashboard and REST API
+hardware/                 Enclosure CAD drafts (OpenSCAD Stephenson screen, WIP)
+img/                      README images (DHT22 wiring diagram, outdated architecture diagram)
+schema.sql                MySQL schema (collectors, app_settings, sensor_readings); auto-loaded by the mysql container
+docker-compose.yml        Orchestrates mqtt-server, mqtt-subscriber, web, mysql
+env_sample                Template for .env (copy and fill before deploying)
+server-setup.sh           Interactive server setup: installs Docker, writes .env, configures containerized or external MySQL
 ```
 
 ---
@@ -61,16 +60,30 @@ temperature-data-collector-1.jpg  Container architecture diagram
 
 | File | Purpose |
 |------|---------|
-| `collector-esp32/collector.ino` | Main firmware — WiFi, MQTT, DHT22 reading, conditional compile for ESP32 vs MKR1000 |
-| `mqtt-subscriber/subscribe-client.py` | MQTT consumer → timestamps → Redis pub; MySQL insert stubbed |
-| `web/app.js` | Express server; subscribes to Redis, pushes to clients via Socket.IO |
-| `web/index.html` | Dashboard UI — Socket.IO client, dark/light mode, live data log |
-| `web/public/css/style.css` | Styling; light/dark themes, mobile breakpoint at 800px |
-| `collector/collector.py` | Deprecated Orange Pi collector (pyA20 GPIO) |
-| `collector/dht.py` | Low-level DHT bitbang implementation for Orange Pi |
-| `docker-compose.yml` | All four containers; all use `network_mode: host` |
-| `mqtt-server/mosquitto.conf` | Broker config — port 1883, auth required |
-| `mqtt-server/password_file` | Hashed MQTT credentials (publisher + subscriber users) |
+| `collector-esp32/collector.ino` | Firmware — WiFi, MQTT, sensor auto-detect (BME680/BME280/BMP180) + DHT22, ESP32 deep sleep, conditional compile for ESP32 vs MKR1000 |
+| `mqtt-subscriber/subscribe-client.py` | MQTT consumer → UTC timestamp → MySQL insert |
+| `web/app.js` | Express server: page routes, MySQL polling → Socket.IO live feed, REST API |
+| `web/index.html` | Dashboard — live collector cards + Leaflet map (satellite view), primary collector |
+| `web/history.html` | Readings table, filterable by collector, time range and limit |
+| `web/settings.html` | Collector metadata (name, location, lat/lng), primary collector; Weather Underground section is a disabled placeholder |
+| `web/public/js/header.js` | Shared header/nav |
+| `web/public/css/style.css` | Dark theme; breakpoints at 800px and 900px |
+| `schema.sql` | Tables: `collectors` (id = MAC), `app_settings` (key/value), `sensor_readings` |
+| `docker-compose.yml` | All four containers; all use `network_mode: host`; mysql has a healthcheck others wait on |
+| `mqtt-server/mosquitto.conf` | Broker config — port 1883, `allow_anonymous false` |
+| `mqtt-server/entrypoint.sh` | Creates `password_file` at container start from `MQTT_*` vars in .env |
+| `hardware/stevenson_screen_draft_claude.scad` | Draft Stephenson screen enclosure (OpenSCAD) |
+
+### REST API (`web/app.js`)
+| Method + path | Purpose |
+|---|---|
+| `GET /api/collectors` | All collectors with their latest reading |
+| `GET /api/collectors/:id` | One collector |
+| `PATCH /api/collectors/:id` | Update `name`, `device_type`, `sensor_type`, `location`, `lat`, `lng` |
+| `GET /api/readings?collector_id=&from=&to=&limit=` | Readings, newest first (limit default 100, max 1000) |
+| `GET /api/collectors/:id/readings?from=&to=&limit=` | Same, for one collector |
+| `GET /api/settings` / `PUT /api/settings` | Key/value app settings (e.g. `primary_collector_id`) |
+| `GET /api/config` | Client config (currently `tz`) |
 
 ---
 
@@ -80,22 +93,28 @@ temperature-data-collector-1.jpg  Container architecture diagram
 
 | Board | Status | Notes |
 |-------|--------|-------|
-| ESP32 (Espressif) | **Active** | GPIO 2 (LED), GPIO 4 (DHT22); WiFi.h |
-| Arduino MKR1000 | **Active** | A5 (LED), A6 (DHT22); WiFi101.h; `#if defined(ARDUINO_SAMD_MKR1000)` |
+| ESP32 (Espressif) | **Active** | GPIO 2 (LED), GPIO 4 (DHT22), I2C SDA 21 / SCL 22; WiFi.h; deep sleeps between readings |
+| Arduino MKR1000 | **Active** | A5 (LED), A6 (DHT22), I2C SDA 11 / SCL 12; WiFi101.h; `#if defined(ARDUINO_SAMD_MKR1000)`; stays awake (`delay()`) — the WINC1500 doesn't reconnect reliably after sleep, so not suitable for batteries |
 | Orange Pi Zero | **Deprecated** | pyA20 library unmaintained; GPIO bitbanging fragile |
 
 ### Sensors
 
 | Sensor | Status | Notes |
 |--------|--------|-------|
+| BME280 (Bosch) | **Active** | Temp, humidity, pressure over I2C (0x76/0x77) |
 | DHT22 (RHT03) | **Active** | Temp: −40–80°C ±0.5°C; Humidity: 0–100% ±2%; 0.5 Hz max poll rate |
+| BME680 / BMP180 | Supported | Auto-detected in place of a BME280 (probe order: BME680 → BME280 → BMP180); BMP180 has no humidity |
 | DHT11 | **Deprecated** | Lower accuracy; Orange Pi only |
-| BME280 (Bosch) | **Planned** | Pressure + altitude; not yet coded anywhere |
 
-### Circuit (from dht-circuit.jpg)
-- DHT22 data pin → MCU GPIO with 10kΩ pull-up to VCC
+Sensor priority: DHT22 temp/humidity win when the read is valid; the pressure sensor always supplies pressure and is the fallback for temp/humidity. The `dvarrel/DHT22` library returns −1 / −273 on a failed read (not NAN), so validity is a range check.
+
+### Circuit
+- BME280: VIN → 3.3V, GND, SDA/SCL to the board's I2C pins (above)
+- DHT22 data pin → MCU GPIO with 10kΩ pull-up to VCC (see `img/dht-circuit.jpg`)
 - Optional status LED: MCU GPIO → 220Ω → LED → GND
-- Power: 3.3V or 5V depending on board
+
+### Battery power (ESP32, optional)
+Adafruit PowerBoost 1000C (5V out → ESP32 VIN, load-sharing charge over its micro-USB) fed by 2× Samsung 30Q 18650 (3000 mAh, 15A) in parallel. Documented in README.md. See "Battery life" below.
 
 ---
 
@@ -103,9 +122,9 @@ temperature-data-collector-1.jpg  Container architecture diagram
 
 ### .env (copy from env_sample)
 ```
-MQTT_PUB_USER / MQTT_PUB_PASS   — credentials for collectors
-MQTT_SUB_USER / MQTT_SUB_PASS   — credentials for mqtt-subscriber
-USE_MYSQL=False                  — set True to attempt MySQL writes (stub still incomplete)
+TZ                               — IANA timezone (e.g. America/New_York); web serves it to clients via /api/config
+MQTT_PUB_USER / MQTT_PUB_PASS    — collector credentials (also hardcoded in collector.ino)
+MQTT_SUB_USER / MQTT_SUB_PASS    — mqtt-subscriber credentials
 DB_HOST / DB_NAME / DB_USER / DB_PASS / MYSQLDB_ROOT_PASSWORD
 ```
 
@@ -115,12 +134,23 @@ char ssid[] = "";          // WiFi SSID
 char pass[] = "";          // WiFi password
 const char broker[] = "";  // MQTT broker IP
 const char mqttUser[] = ""; const char mqttPass[] = "";
-const unsigned long publishInterval = 10;  // seconds between readings
+const unsigned long publishInterval = 60;  // seconds between readings (ESP32 deep sleeps in between)
+
+// Optional static IP (ESP32 only). Leave staticIP at 0.0.0.0 to use DHCP.
+IPAddress staticIP(0, 0, 0, 0);     // e.g. 192.168.3.13 — reserve it on the router or pick one outside the DHCP pool
+IPAddress gateway(0, 0, 0, 0);      // router IP, e.g. 192.168.3.1 (required when staticIP is set)
+IPAddress subnet(255, 255, 255, 0);
+IPAddress dns(0, 0, 0, 0);          // 0.0.0.0 = use the gateway
 ```
 There is no OTA provisioning — credentials require recompile and reflash.
 
+Firmware libraries: ArduinoMqttClient, DHT22 (dvarrel), Adafruit BME280, Adafruit BME680, Adafruit BMP085 (all three Adafruit libs are needed to compile), WiFi101 (MKR1000 only).
+
+### Battery life (ESP32)
+The ESP32 deep sleeps between readings; each wake runs `setup()` → `runCycle()` → deep sleep. The AP's BSSID/channel and the network failure counter live in `RTC_DATA_ATTR` memory, so wakes skip the WiFi scan. Setting a **static IP is the biggest optional battery improvement**: it skips DHCP, which measured at >1 s per wake. On a DevKit with a 60 s interval, wake time dropped from ~1.5–2.0 s (DHCP) to ~0.5 s (static IP). The remaining drain on that hardware is mostly the board's always-on overhead (regulator, LEDs, PowerBoost), not the firmware.
+
 ### Timezone
-Hardcoded `TZ=America/Detroit` in both `mqtt-subscriber/Dockerfile` and `web/Dockerfile`. Should become an env var.
+`TZ` in .env. Readings are stored in UTC (the subscriber generates timestamps explicitly in UTC); the frontend converts using `/api/config`.
 
 ### Firewall ports to open on server
 - 1883 TCP — MQTT
@@ -131,57 +161,53 @@ Hardcoded `TZ=America/Detroit` in both `mqtt-subscriber/Dockerfile` and `web/Doc
 ## Known Issues & Technical Debt
 
 ### Bugs
-- **Frontend memory leak** (`web/index.html`): `<span>` elements appended to `#databox` indefinitely; browser will eventually slow with many collectors running for days. Needs a max-item cap or virtual scroll.
-- **`polldb()` dead code** (`web/index.html:51–58`): async function called but never resolves; left over from a MySQL polling approach. Remove it.
-- **DHT22 temperature overflow fallback** (`collector/dht.py:182–185`): `if c > 125: c = mybytes[2]` — undefined behavior on edge values; only matters for the deprecated Orange Pi path but worth noting.
+- **Rows stored before the pressure fix may have `pressure = 0`** from collectors without a pressure sensor (the subscriber now stores NULL). Clean up with `UPDATE sensor_readings SET pressure = NULL WHERE pressure = 0;`.
+- **Serial Monitor garbles the first wake after flashing** (ESP32): repeated 32-byte chunks of output. It's an Arduino IDE monitor artifact, not the firmware; later wakes print cleanly.
 
 ### Technical Debt
-- **MySQL export not implemented**: `insert_mysql()` in `mqtt-subscriber/subscribe-client.py` is a stub. Schema exists in `schema.sql` (table named `dht11_data` — anachronistic). `USE_MYSQL` env var has no effect.
-- **No data persistence**: Redis is ephemeral. Restarting containers loses all history. No historical query capability.
-- **No REST API**: Only Socket.IO real-time push. No endpoint to fetch historical data or query by time range.
-- **No web authentication**: Dashboard is open to anyone who can reach port 8080.
-- **No MQTT topic namespacing**: All collectors publish to `General`. No location or unit separation at the broker level.
-- **No tests**: `pytest` is in requirements; `.pytest_cache` present; no test files exist.
-- **Hardcoded credentials in firmware**: No WiFi provisioning (e.g., WiFiManager) or EEPROM-based config.
-- **`server-setup.sh` is incomplete**: MySQL sections are commented out and marked TODO.
-- **Schema naming mismatch**: MySQL table is `dht11_data` but active sensor is DHT22.
-- **`app-mysql.js`**: Legacy file in `web/`; not used, not wired into Docker. Reference only — can be deleted once MySQL is properly implemented.
+- **No web authentication**: Dashboard *and* the write endpoints (`PATCH /api/collectors/:id`, `PUT /api/settings`) are open to anyone who can reach port 8080.
+- **No MQTT topic namespacing**: All collectors publish to `General`.
+- **No tests**: none for any component.
+- **Hardcoded credentials in firmware**: No WiFi provisioning (e.g., WiFiManager) or NVS-based config.
+- **Live feed polls MySQL** every 5 s rather than being pushed from the subscriber.
+- **BME280 runs in normal mode**: Adafruit's `begin()` default keeps it measuring continuously (~0.6 mA, slight self-heating), including while the ESP32 sleeps. Forced mode would fix both.
+- **Weather Underground upload**: UI placeholder in Settings, not implemented.
 
 ---
 
 ## Roadmap
 
-### V1 (Near-term operationalization)
-- [ ] MySQL persistence — implement `insert_mysql()` properly; rename table
-- [ ] BME280 support in firmware (replaces DHT22 for pressure data)
+See README.md "Feature Roadmap" for the user-facing checklist. Additional engineering items:
+
+### V1
 - [ ] WiFi provisioning for ESP32 (WiFiManager library) — no more hardcoded credentials
-- [ ] Historical data: REST API + frontend chart (e.g., Chart.js) for time-range queries
-- [ ] Timezone as env var (not hardcoded in Dockerfiles)
-- [ ] Frontend databox cap — remove old entries to prevent memory growth
+- [ ] Historical chart on the History page (e.g., Chart.js); data already available via `/api/readings`
 - [ ] MQTT topic namespacing by location/collector ID
-- [ ] Remove `collector/` (Orange Pi) or clearly gate it behind a deprecation warning
-- [ ] 3D-printed enclosure: Stephenson screen design in PETG for outdoor placement
+- [ ] Remove `collector-opi-deprecated/`
+- [ ] 3D-printed enclosure: Stephenson screen design in PETG for outdoor placement (draft in `hardware/`)
 - [ ] Schematic: proper CAD circuit diagram (KiCad or similar) replacing raster JPG
-- [ ] Remove dead code: `polldb()` in index.html, `app-mysql.js`
+- [ ] BME280 forced mode
 
 ### V2 (Future)
 - [ ] Solar power design for collector nodes
 - [ ] AQI / particulate matter sensor support
 - [ ] Modular hub architecture (multiple independent locations)
 - [ ] OTA firmware updates
-- [ ] Web auth (at minimum HTTP basic auth in front of dashboard)
+- [ ] Web auth (at minimum HTTP basic auth in front of dashboard and API)
+- [ ] Weather Underground upload
 - [ ] Branding / product identity
 
 ---
 
 ## Development Conventions
 
-- **JSON data interchange** throughout — all MQTT payloads and Redis messages are JSON strings.
-- **Conditional compilation** in firmware: `#if defined(ARDUINO_SAMD_MKR1000)` gates MKR1000-specific pin assignments; everything else assumes ESP32.
-- **Collector ID** = MAC address (switched from IP in commit `af63481`). Used as a device identifier in the dashboard.
-- **Temperature display** = Fahrenheit on frontend (converted from °C). Stored internally as °C.
+- **JSON data interchange** for all MQTT payloads; Socket.IO pushes MySQL rows as JSON strings.
+- **Conditional compilation** in firmware: `#if defined(ARDUINO_SAMD_MKR1000)` gates MKR1000-specific code; everything else assumes ESP32. Sleep, fast reconnect and static IP are ESP32-only.
+- **Collector ID** = MAC address (switched from IP in commit `af63481`). Primary key of `collectors`.
+- **Units**: stored as °C / % / hPa; the frontend displays temperature in °F.
 - **All four server services** run in Docker with `network_mode: host` — no Docker bridge network. Services communicate via localhost.
 - **No linting or formatter** configured for any language in this repo.
+- **Arduino sketch folder**: arduino-cli requires the folder name to match the `.ino` name, so `collector-esp32/collector.ino` can't be compiled in place; copy it into a matching sketch folder.
 
 ---
 
@@ -189,19 +215,18 @@ Hardcoded `TZ=America/Detroit` in both `mqtt-subscriber/Dockerfile` and `web/Doc
 
 ```bash
 # Server
-cp env_sample .env
-# fill in MQTT credentials in .env
-docker-compose up --build
+bash server-setup.sh        # or: cp env_sample .env, fill it in, then:
+docker compose up --build -d
 
 # Dashboard
 open http://<server-ip>:8080
 
 # Firmware
 # 1. Open collector-esp32/collector.ino in Arduino IDE
-# 2. Fill in ssid, pass, broker, mqttUser, mqttPass
-# 3. Install libraries: ArduinoMqttClient, DHT sensor library, WiFi (or WiFi101)
-# 4. Select board (ESP32 Dev Module or MKR1000) and flash
+# 2. Fill in ssid, pass, broker, mqttUser, mqttPass (optionally staticIP + gateway)
+# 3. Install libraries (see Configuration above)
+# 4. Select board (ESP32 Dev Module or MKR1000) and the USB port (/dev/ttyUSB0 for CP2102 boards), then upload
 
 # Logs
-docker-compose logs -f
+docker compose logs -f
 ```
