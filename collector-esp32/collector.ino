@@ -161,7 +161,7 @@ void runCycle() {
     return;
   }
   Serial.print("WiFi connected! IP: ");
-  Serial.println(WiFi.localIP());
+  Serial.println(IPAddress(WiFi.localIP()));  // WiFi101 returns a raw uint32_t
 
   // MAC is the collector ID; read it once WiFi is up (no separate connect needed)
   if (macStr[0] == '\0') {
