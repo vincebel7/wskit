@@ -28,10 +28,10 @@ MQTT_SUB_USER = os.getenv("MQTT_SUB_USER")
 MQTT_SUB_PASS = os.getenv("MQTT_SUB_PASS")
 MQTT_PORT = 1883
 
-global Connected
 Connected = False
 
 def on_connect(mqtt_client, userdata, flags, rc):
+    global Connected
     if rc == 0:
         print("Subscriber connected to MQTT server")
         Connected = True
@@ -72,7 +72,7 @@ def insert_mysql(data):
                 "recorded_at":  data["time"],
                 "temperature":  data.get("temperature"),
                 "humidity":     data.get("humidity"),
-                "pressure":     data.get("pressure", 0),
+                "pressure":     data.get("pressure"),
             })
     except Exception as e:
         print(f"MySQL insert failed: {e}")
