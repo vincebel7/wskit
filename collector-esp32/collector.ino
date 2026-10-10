@@ -2,6 +2,8 @@
 #include <DHT22.h>
 #include <Wire.h>
 #include <Adafruit_BME280.h>
+#include <Adafruit_BME680.h>
+#include <Adafruit_BMP085.h>
 
 #if defined(ESP32)
   #include <WiFi.h>
@@ -18,9 +20,23 @@
   #error "Unsupported board. Please compile for ESP32 or MKR1000."
 #endif
 
+// CONFIGURE
+char ssid[] = "";
+char pass[] = "";
+
+const char broker[] = "";
+const char mqttUser[] = "";
+const char mqttPass[] = "";
+int port = 1883;
+const char topic[] = "General";
+
+
 DHT22 dht(DHTPIN);
-Adafruit_BME280 bme;
-bool bmeAvailable = false;
+Adafruit_BME280 bme280;
+Adafruit_BME680 bme680;
+Adafruit_BMP085 bmp180;
+enum BMEType { BME_NONE, BME_280, BME_680, BME_BMP180 };
+BMEType bmeType = BME_NONE;
 
 // Auto-restart after this many consecutive network failures
 const int maxNetworkFailures = 5;
@@ -40,15 +56,6 @@ void maybeRestartAfterFailure() {
     #endif
   }
 }
-
-char ssid[] = "";
-char pass[] = "";
-
-const char broker[] = "";
-const char mqttUser[] = "";
-const char mqttPass[] = "";
-int port = 1883;
-const char topic[] = "General";
 
 WiFiClient wifiClient;
 MqttClient mqttClient(wifiClient);
@@ -73,8 +80,18 @@ void setup() {
   #else
     Wire.begin();
   #endif
-  bmeAvailable = bme.begin(0x76) || bme.begin(0x77);
-  Serial.println(bmeAvailable ? "BME280 found" : "BME280 not found");
+  if (bme680.begin(0x76) || bme680.begin(0x77)) {
+    bmeType = BME_680;
+    Serial.println("BME680 found");
+  } else if (bme280.begin(0x76) || bme280.begin(0x77)) {
+    bmeType = BME_280;
+    Serial.println("BME280 found");
+  } else if (bmp180.begin()) {
+    bmeType = BME_BMP180;
+    Serial.println("BMP180 found");
+  } else {
+    Serial.println("No pressure sensor found");
+  }
 
   // Boot indicator
   for (int i = 0; i < 3; i++) {
@@ -171,13 +188,54 @@ void loop() {
   bool dhtOk = !isnan(h) && !isnan(t);
   if (!dhtOk) Serial.println("DHT22 read error");
 
-  // --- Read BME280 (pressure) ---
+  // --- Read pressure sensor (pressure always; temp/humidity as DHT22 fallback where available) ---
   float p = NAN;
+  float bmeTemp = NAN, bmeHumidity = NAN;
   bool bmeOk = false;
-  if (bmeAvailable) {
-    p = bme.readPressure() / 100.0F;  // Pa -> hPa
-    bmeOk = !isnan(p);
-    if (!bmeOk) Serial.println("BME280 read error");
+  if (bmeType == BME_680) {
+    if (bme680.performReading()) {
+      p           = bme680.pressure / 100.0F;  // Pa -> hPa
+      bmeTemp     = bme680.temperature;
+      bmeHumidity = bme680.humidity;
+      bmeOk = true;
+    } else {
+      Serial.println("BME680 read error");
+    }
+  } else if (bmeType == BME_280) {
+    float rawP = bme280.readPressure();
+    float rawT = bme280.readTemperature();
+    float rawH = bme280.readHumidity();
+    bool humidityValid = !isnan(rawH) && rawH >= 0.0 && rawH <= 100.0;
+    if (!isnan(rawP) && !isnan(rawT)) {
+      p       = rawP / 100.0F;  // Pa -> hPa
+      bmeTemp = rawT;
+      if (humidityValid) bmeHumidity = rawH;
+      bmeOk = true;
+    } else {
+      Serial.println("BME280 read error");
+    }
+    if (!humidityValid) Serial.println("BME280: humidity invalid (chip may be BMP280 — no humidity sensor)");
+  } else if (bmeType == BME_BMP180) {
+    float rawP = bmp180.readPressure();
+    float rawT = bmp180.readTemperature();
+    if (!isnan(rawP) && !isnan(rawT)) {
+      p       = rawP / 100.0F;  // Pa -> hPa
+      bmeTemp = rawT;
+      // bmeHumidity stays NAN — BMP180 has no humidity sensor
+      bmeOk = true;
+    } else {
+      Serial.println("BMP180 read error");
+    }
+  }
+
+  // Fall back to pressure sensor for temp (and humidity, if sensor supports it)
+  float t_out = dhtOk ? t : bmeTemp;
+  float h_out = dhtOk ? h : bmeHumidity;
+  if (!dhtOk && bmeOk) {
+    if (bmeType == BME_BMP180)
+      Serial.println("DHT22 unavailable: using BMP180 for temperature only (no humidity fallback)");
+    else
+      Serial.println("DHT22 unavailable: using BME sensor for temp/humidity");
   }
 
   // Skip publish only if all sensors failed
@@ -195,13 +253,9 @@ void loop() {
   // --- Build JSON message ---
   String msg = "{";
   msg += "\"id\": \"" + String(macStr) + "\"";
-  if (dhtOk) {
-    msg += ",\"temperature\": " + String(t, 1);
-    msg += ",\"humidity\": " + String(h, 1);
-  }
-  if (bmeOk) {
-    msg += ",\"pressure\": " + String(p, 1);
-  }
+  if (!isnan(t_out)) msg += ",\"temperature\": " + String(t_out, 1);
+  if (!isnan(h_out)) msg += ",\"humidity\": "    + String(h_out, 1);
+  if (bmeOk)         msg += ",\"pressure\": "    + String(p, 1);
   msg += "}";
 
   // --- Publish ---
