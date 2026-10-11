@@ -98,6 +98,7 @@ bool connectWiFi() {
   #if defined(ESP32)
     WiFi.persistent(false);  // don't rewrite credentials to flash on every wake
     WiFi.mode(WIFI_STA);
+    WiFi.setSleep(false);    // modem sleep delays incoming packets (e.g. the PUBACK) until the next beacon
     if ((uint32_t)staticIP != 0) {
       WiFi.config(staticIP, gateway, subnet, (uint32_t)dns != 0 ? dns : gateway);
     }
@@ -151,50 +152,41 @@ void sleepUntilNextCycle() {
   #endif
 }
 
-// One full cycle: connect, read sensors, publish, disconnect
+// The DHT22 is bit-banged with microsecond timing and the library doesn't block
+// interrupts, so this runs before WiFi is up. Returns the library error code (0 = OK).
+// Error codes: 1-3 timing (1 = no response), 4 = checksum, 255 = values out of range.
+uint8_t readDHT(float &h, float &t) {
+  uint8_t err = DHT22::OK;
+  for (int attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) delay(2100);  // sensor allows one read per 2 s
+    h = dht.getHumidity();         // does the actual read
+    t = dht.getTemperature();      // reuses that read (library rate-limits to one per 2.1 s)
+    err = dht.getLastError();
+    // Library returns -1 (humidity) / -273 (temp) on a failed read, not NAN
+    if (err == DHT22::OK && h >= 0.0 && h <= 100.0 && t >= -40.0 && t <= 80.0) return DHT22::OK;
+    if (err == DHT22::OK) err = 255;
+    Serial.print("DHT22 read error, code = ");
+    Serial.println(err);
+    // No response at all usually means no DHT22 is wired: don't spend 2 s retrying
+    if (err == DHT22::ERR_TIMING_80) break;
+  }
+  return err;
+}
+
+// One full cycle: read sensors, connect, publish, disconnect
 void runCycle() {
-  // --- Connect WiFi ---
-  if (!connectWiFi()) {
-    Serial.println("WiFi failed, waiting...");
-    disconnectWiFi();
-    maybeRestartAfterFailure();
-    return;
-  }
-  Serial.print("WiFi connected! IP: ");
-  Serial.println(IPAddress(WiFi.localIP()));  // WiFi101 returns a raw uint32_t
-
-  // MAC is the collector ID; read it once WiFi is up (no separate connect needed)
-  if (macStr[0] == '\0') {
-    WiFi.macAddress(mac);
-    sprintf(macStr, "%02X:%02X:%02X:%02X:%02X:%02X",
-            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-    Serial.println(macStr);
-  }
-
-  // --- Connect MQTT ---
-  mqttClient.setUsernamePassword(mqttUser, mqttPass);
-  Serial.println("Connecting to MQTT...");
-  if (!mqttClient.connect(broker, port)) {
-    Serial.print("MQTT failed, code = ");
-    Serial.println(mqttClient.connectError());
-    disconnectWiFi();
-    maybeRestartAfterFailure();
-    return;
-  }
-  Serial.println("MQTT connected");
-
-  // --- Read DHT22 ---
-  float h = dht.getHumidity();
-  float t = dht.getTemperature();
-  // Library returns -1 (humidity) / -273 (temp) on a failed read, not NAN
-  bool dhtOk = h >= 0.0 && h <= 100.0 && t >= -40.0 && t <= 80.0;
-  if (!dhtOk) Serial.println("DHT22 read error");
+  // --- Read DHT22 (before WiFi, see readDHT) ---
+  float h = NAN, t = NAN;
+  uint8_t dhtErr = readDHT(h, t);
+  bool dhtOk = dhtErr == DHT22::OK;
 
   // --- Read pressure sensor (pressure always; temp/humidity as DHT22 fallback where available) ---
   float p = NAN;
   float bmeTemp = NAN, bmeHumidity = NAN;
   bool bmeOk = false;
+  const char *bmeName = "none";
   if (bmeType == BME_680) {
+    bmeName = "bme680";
     if (bme680.performReading()) {
       p           = bme680.pressure / 100.0F;  // Pa -> hPa
       bmeTemp     = bme680.temperature;
@@ -204,6 +196,7 @@ void runCycle() {
       Serial.println("BME680 read error");
     }
   } else if (bmeType == BME_280) {
+    bmeName = "bme280";
     float rawP = bme280.readPressure();
     float rawT = bme280.readTemperature();
     float rawH = bme280.readHumidity();
@@ -216,6 +209,7 @@ void runCycle() {
       Serial.println("BME280 read error");
     }
   } else if (bmeType == BME_BMP180) {
+    bmeName = "bmp180";
     float rawP = bmp180.readPressure();
     float rawT = bmp180.readTemperature();
     if (!isnan(rawP) && !isnan(rawT)) {
@@ -238,13 +232,47 @@ void runCycle() {
       Serial.println("DHT22 unavailable: using BME sensor for temp/humidity");
   }
 
-  // Skip publish only if all sensors failed
+  // Skip the cycle (and the WiFi connect) only if all sensors failed
   if (!dhtOk && !bmeOk) {
     Serial.println("All sensors failed, skipping publish");
-    mqttClient.stop();
-    disconnectWiFi();
     return;
   }
+
+  // --- Connect WiFi ---
+  if (!connectWiFi()) {
+    Serial.println("WiFi failed, waiting...");
+    disconnectWiFi();
+    maybeRestartAfterFailure();
+    return;
+  }
+  Serial.print("WiFi connected! IP: ");
+  Serial.println(IPAddress(WiFi.localIP()));  // WiFi101 returns a raw uint32_t
+
+  // MAC is the collector ID; read it once WiFi is up (no separate connect needed)
+  if (macStr[0] == '\0') {
+    WiFi.macAddress(mac);
+    sprintf(macStr, "%02X:%02X:%02X:%02X:%02X:%02X",
+            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    Serial.println(macStr);
+    // Fixed MQTT client ID. The library default is "Arduino-<millis>", which repeats
+    // across deep-sleep wakes (millis is ~250 at every connect)
+    char clientId[20];
+    sprintf(clientId, "wskit-%02X%02X%02X%02X%02X%02X",
+            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    mqttClient.setId(clientId);
+  }
+
+  // --- Connect MQTT ---
+  mqttClient.setUsernamePassword(mqttUser, mqttPass);
+  Serial.println("Connecting to MQTT...");
+  if (!mqttClient.connect(broker, port)) {
+    Serial.print("MQTT failed, code = ");
+    Serial.println(mqttClient.connectError());
+    disconnectWiFi();
+    maybeRestartAfterFailure();
+    return;
+  }
+  Serial.println("MQTT connected");
 
   // --- Build JSON message ---
   String msg = "{";
@@ -252,12 +280,24 @@ void runCycle() {
   if (!isnan(t_out)) msg += ",\"temperature\": " + String(t_out, 1);
   if (!isnan(h_out)) msg += ",\"humidity\": "    + String(h_out, 1);
   if (bmeOk)         msg += ",\"pressure\": "    + String(p, 1);
+  // Diagnostics (not stored; visible in the mqtt-subscriber logs)
+  msg += ",\"source\": \"" + String(dhtOk ? "dht22" : bmeName) + "\"";
+  if (!dhtOk) msg += ",\"dht_error\": " + String(dhtErr);
+  msg += ",\"rssi\": " + String(WiFi.RSSI());
   msg += "}";
 
   // --- Publish ---
-  mqttClient.beginMessage(topic);
+  // QoS 1: endMessage() waits for the broker's PUBACK, so we only sleep once the
+  // reading has arrived. With QoS 0 the radio was usually off before it left.
+  mqttClient.beginMessage(topic, false, 1);
   mqttClient.print(msg);
-  mqttClient.endMessage();
+  if (!mqttClient.endMessage()) {
+    Serial.println("Publish not acknowledged by broker");
+    mqttClient.stop();
+    disconnectWiFi();
+    maybeRestartAfterFailure();
+    return;
+  }
 
   Serial.print("Published: ");
   Serial.println(msg);
@@ -265,13 +305,11 @@ void runCycle() {
   // Publish succeeded, reset the failure counter
   networkFailures = 0;
 
-  // --- Blink LED once (also gives the TCP stack time to send before disconnect) ---
+  // --- Disconnect, then blink LED once (also gives the MQTT DISCONNECT time to send) ---
+  mqttClient.stop();
   digitalWrite(LEDPIN, HIGH);
   delay(200);
   digitalWrite(LEDPIN, LOW);
-
-  // --- Disconnect to save power ---
-  mqttClient.stop();
   disconnectWiFi();
 }
 

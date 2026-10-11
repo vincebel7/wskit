@@ -30,7 +30,9 @@ Primary goals going forward: software robustness, documentation cleanup, hardwar
 ```json
 { "id": "38:18:2B:8A:1D:B0", "temperature": 22.1, "humidity": 47.4, "pressure": 1003.6 }
 ```
-`temperature` (°C), `humidity` (%) and `pressure` (hPa) are each omitted when unavailable.
+`temperature` (°C), `humidity` (%) and `pressure` (hPa) are each omitted when unavailable. The firmware also sends diagnostics that the subscriber logs but doesn't store: `source` (which sensor supplied temp/humidity: `dht22`, `bme280`, …), `dht_error` (DHT22 error code, only when it failed) and `rssi` (dBm).
+
+Collectors publish with **QoS 1** and client ID `wskit-<MAC>`; the ESP32 only sleeps once the broker has acknowledged the message. (With QoS 0 the radio was usually switched off before the message left: ~90% of readings were lost.)
 
 **Subscriber** adds `"time"` (UTC ISO 8601), auto-registers unknown collector IDs in `collectors`, and inserts a row into `sensor_readings`.
 
@@ -106,7 +108,9 @@ server-setup.sh           Interactive server setup: installs Docker, writes .env
 | BME680 / BMP180 | Supported | Auto-detected in place of a BME280 (probe order: BME680 → BME280 → BMP180); BMP180 has no humidity |
 | DHT11 | **Deprecated** | Lower accuracy; Orange Pi only |
 
-Sensor priority: DHT22 temp/humidity win when the read is valid; the pressure sensor always supplies pressure and is the fallback for temp/humidity. The `dvarrel/DHT22` library returns −1 / −273 on a failed read (not NAN), so validity is a range check.
+Sensor priority: DHT22 temp/humidity win when the read is valid; the pressure sensor always supplies pressure and is the fallback for temp/humidity. The `dvarrel/DHT22` library returns −1 / −273 on a failed read (not NAN), so validity is `getLastError()` plus a range check.
+
+The DHT22 is bit-banged (≈27 µs vs 70 µs pulses) and the library doesn't disable interrupts, so the firmware reads it **before** starting WiFi and retries once after 2.1 s (not when the sensor gives no response at all, i.e. none is wired). Reading it while WiFi is active, or from userspace Python as the Orange Pi collector did, produces frequent timing/checksum errors.
 
 ### Circuit
 - BME280: VIN → 3.3V, GND, SDA/SCL to the board's I2C pins (above)
