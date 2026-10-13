@@ -159,10 +159,10 @@ Coming soon: a 3D-printable Stephenson screen design in PETG for outdoor placeme
 - [x] Server: Live web dashboard with map view and dark mode
 - [x] Server: History and Settings pages
 - [x] Server: REST API for collectors and readings
-- [x] Server: Timezone support
 
-**v2.0**
+**Future Ideas**
 - [ ] Collector: Solar power
 - [ ] Collector: AQI sensors
 - [ ] Server: Graph/chart generation
 - [ ] Server: Modular hub architecture (multiple locations)
+- [ ] Particulate matter sensor support (Sensirion SPS30 or Plantower PMS5003)
