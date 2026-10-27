@@ -10,7 +10,7 @@ Primary goals going forward: software robustness, documentation cleanup, hardwar
 
 ```
 [ESP32 / MKR1000]                     [Server (Docker Compose, network_mode: host)]
-  BME280 and/or DHT22                  ┌──────────────────────────────────────────┐
+  SHT45 / BME280 / DHT22               ┌──────────────────────────────────────────┐
   reads temp/humidity/pressure         │  mqtt-server: Mosquitto (port 1883)      │
   → publishes JSON via WiFi/MQTT ─────►│  mqtt-subscriber (Python)                │
   (ESP32 deep sleeps between reads)    │    → adds UTC server timestamp           │
@@ -30,7 +30,7 @@ Primary goals going forward: software robustness, documentation cleanup, hardwar
 ```json
 { "id": "38:18:2B:8A:1D:B0", "temperature": 22.1, "humidity": 47.4, "pressure": 1003.6 }
 ```
-`temperature` (°C), `humidity` (%) and `pressure` (hPa) are each omitted when unavailable. The firmware also sends diagnostics that the subscriber logs but doesn't store: `source` (which sensor supplied temp/humidity: `dht22`, `bme280`, …), `dht_error` (DHT22 error code, only when it failed) and `rssi` (dBm).
+`temperature` (°C), `humidity` (%) and `pressure` (hPa) are each omitted when unavailable. The firmware also sends diagnostics that the subscriber logs but doesn't store: `source` (which sensor supplied temp/humidity: `sht4x`, `dht22`, `bme280`, …), `dht_error` (DHT22 error code, only when it failed) and `rssi` (dBm).
 
 Collectors publish with **QoS 1** and client ID `wskit-<MAC>`; the ESP32 only sleeps once the broker has acknowledged the message. (With QoS 0 the radio was usually switched off before the message left: ~90% of readings were lost.)
 
@@ -62,7 +62,7 @@ server-setup.sh           Interactive server setup: installs Docker, writes .env
 
 | File | Purpose |
 |------|---------|
-| `collector-esp32/collector.ino` | Firmware — WiFi, MQTT, sensor auto-detect (BME680/BME280/BMP180) + DHT22, ESP32 deep sleep, conditional compile for ESP32 vs MKR1000 |
+| `collector-esp32/collector.ino` | Firmware — WiFi, MQTT, sensor auto-detect (SHT4x, BME680/BME280/BMP180) + DHT22, ESP32 deep sleep, conditional compile for ESP32 vs MKR1000 |
 | `mqtt-subscriber/subscribe-client.py` | MQTT consumer → UTC timestamp → MySQL insert |
 | `web/app.js` | Express server: page routes, MySQL polling → Socket.IO live feed, REST API |
 | `web/index.html` | Dashboard — live collector cards + Leaflet map (satellite view), primary collector |
@@ -103,17 +103,19 @@ server-setup.sh           Interactive server setup: installs Docker, writes .env
 
 | Sensor | Status | Notes |
 |--------|--------|-------|
+| SHT45 (Sensirion) | **Active** | Temp ±0.1°C, humidity ±1%, I2C 0x44 (Adafruit breakout: VIN, 3Vo, GND, SCL, SDA). Any SHT4x is detected; single-shot, ~1 µA between readings |
 | BME280 (Bosch) | **Active** | Temp, humidity, pressure over I2C (0x76/0x77) |
 | DHT22 (RHT03) | **Active** | Temp: −40–80°C ±0.5°C; Humidity: 0–100% ±2%; 0.5 Hz max poll rate |
 | BME680 / BMP180 | Supported | Auto-detected in place of a BME280 (probe order: BME680 → BME280 → BMP180); BMP180 has no humidity |
 | DHT11 | **Deprecated** | Lower accuracy; Orange Pi only |
 
-Sensor priority: DHT22 temp/humidity win when the read is valid; the pressure sensor always supplies pressure and is the fallback for temp/humidity. The `dvarrel/DHT22` library returns −1 / −273 on a failed read (not NAN), so validity is `getLastError()` plus a range check.
+Sensor priority: temp/humidity come from the SHT4x if one is detected, otherwise the DHT22 (the DHT22 isn't read at all when an SHT4x is present); the pressure sensor always supplies pressure and is the fallback for temp/humidity. The `dvarrel/DHT22` library returns −1 / −273 on a failed read (not NAN), so validity is `getLastError()` plus a range check.
 
 The DHT22 is bit-banged (≈27 µs vs 70 µs pulses) and the library doesn't disable interrupts, so the firmware reads it **before** starting WiFi and retries once after 2.1 s (not when the sensor gives no response at all, i.e. none is wired). Reading it while WiFi is active, or from userspace Python as the Orange Pi collector did, produces frequent timing/checksum errors.
 
 ### Circuit
 - BME280: VIN → 3.3V, GND, SDA/SCL to the board's I2C pins (above)
+- SHT45: same as the BME280, on the same SDA/SCL lines (3Vo is a regulator output; leave it unconnected). Both breakouts have their own I2C pull-ups
 - DHT22 data pin → MCU GPIO with 10kΩ pull-up to VCC (see `img/dht-circuit.jpg`)
 - Optional status LED: MCU GPIO → 220Ω → LED → GND
 
@@ -148,7 +150,7 @@ IPAddress dns(0, 0, 0, 0);          // 0.0.0.0 = use the gateway
 ```
 There is no OTA provisioning — credentials require recompile and reflash.
 
-Firmware libraries: ArduinoMqttClient, DHT22 (dvarrel), Adafruit BME280, Adafruit BME680, Adafruit BMP085 (all three Adafruit libs are needed to compile), WiFi101 (MKR1000 only).
+Firmware libraries: ArduinoMqttClient, DHT22 (dvarrel), Adafruit SHT4x, Adafruit BME280, Adafruit BME680, Adafruit BMP085 (all three Adafruit libs are needed to compile), WiFi101 (MKR1000 only).
 
 ### Battery life (ESP32)
 The ESP32 deep sleeps between readings; each wake runs `setup()` → `runCycle()` → deep sleep. The AP's BSSID/channel and the network failure counter live in `RTC_DATA_ATTR` memory, so wakes skip the WiFi scan. Setting a **static IP is the biggest optional battery improvement**: it skips DHCP, which measured at >1 s per wake. On a DevKit with a 60 s interval, wake time dropped from ~1.5–2.0 s (DHCP) to ~0.5 s (static IP). The remaining drain on that hardware is mostly the board's always-on overhead (regulator, LEDs, PowerBoost), not the firmware.

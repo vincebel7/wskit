@@ -4,6 +4,7 @@
 #include <Adafruit_BME280.h>
 #include <Adafruit_BME680.h>
 #include <Adafruit_BMP085.h>
+#include <Adafruit_SHT4x.h>
 
 #if defined(ESP32)
   #include <WiFi.h>
@@ -44,6 +45,8 @@ IPAddress subnet(255, 255, 255, 0);
 IPAddress dns(0, 0, 0, 0);
 
 
+Adafruit_SHT4x sht4;
+bool shtFound = false;  // SHT4x (SHT40/41/45) replaces the DHT22 when present
 DHT22 dht(DHTPIN);
 Adafruit_BME280 bme280;
 Adafruit_BME680 bme680;
@@ -173,12 +176,40 @@ uint8_t readDHT(float &h, float &t) {
   return err;
 }
 
+// Lists the addresses that answer on the I2C bus, e.g. "0x44 0x76" (SHT4x + BME280).
+// Sent with each reading so wiring can be checked without the serial monitor.
+String scanI2C() {
+  String found = "";
+  for (uint8_t addr = 1; addr < 127; addr++) {
+    Wire.beginTransmission(addr);
+    if (Wire.endTransmission() == 0) {
+      if (found.length()) found += " ";
+      found += "0x" + String(addr, HEX);
+    }
+  }
+  return found;
+}
+
 // One full cycle: read sensors, connect, publish, disconnect
 void runCycle() {
-  // --- Read DHT22 (before WiFi, see readDHT) ---
+  // --- Read temp/humidity sensor: SHT4x if present, otherwise DHT22 (before WiFi, see readDHT) ---
   float h = NAN, t = NAN;
-  uint8_t dhtErr = readDHT(h, t);
-  bool dhtOk = dhtErr == DHT22::OK;
+  const char *thName = NULL;  // sensor that supplied t/h; NULL = it failed
+  uint8_t dhtErr = DHT22::OK;
+  if (shtFound) {
+    sensors_event_t hEvent, tEvent;
+    if (sht4.getEvent(&hEvent, &tEvent)) {
+      h = constrain(hEvent.relative_humidity, 0.0, 100.0);  // library doesn't clamp
+      t = tEvent.temperature;
+      thName = "sht4x";
+    } else {
+      Serial.println("SHT4x read error");
+    }
+  } else {
+    dhtErr = readDHT(h, t);
+    if (dhtErr == DHT22::OK) thName = "dht22";
+  }
+  bool thOk = thName != NULL;
 
   // --- Read pressure sensor (pressure always; temp/humidity as DHT22 fallback where available) ---
   float p = NAN;
@@ -223,17 +254,17 @@ void runCycle() {
   }
 
   // Fall back to pressure sensor for temp (and humidity, if sensor supports it)
-  float t_out = dhtOk ? t : bmeTemp;
-  float h_out = dhtOk ? h : bmeHumidity;
-  if (!dhtOk && bmeOk) {
+  float t_out = thOk ? t : bmeTemp;
+  float h_out = thOk ? h : bmeHumidity;
+  if (!thOk && bmeOk) {
     if (bmeType == BME_BMP180)
-      Serial.println("DHT22 unavailable: using BMP180 for temperature only (no humidity fallback)");
+      Serial.println("Temp/humidity sensor unavailable: using BMP180 for temperature only (no humidity fallback)");
     else
-      Serial.println("DHT22 unavailable: using BME sensor for temp/humidity");
+      Serial.println("Temp/humidity sensor unavailable: using BME sensor for temp/humidity");
   }
 
   // Skip the cycle (and the WiFi connect) only if all sensors failed
-  if (!dhtOk && !bmeOk) {
+  if (!thOk && !bmeOk) {
     Serial.println("All sensors failed, skipping publish");
     return;
   }
@@ -281,9 +312,10 @@ void runCycle() {
   if (!isnan(h_out)) msg += ",\"humidity\": "    + String(h_out, 1);
   if (bmeOk)         msg += ",\"pressure\": "    + String(p, 1);
   // Diagnostics (not stored; visible in the mqtt-subscriber logs)
-  msg += ",\"source\": \"" + String(dhtOk ? "dht22" : bmeName) + "\"";
-  if (!dhtOk) msg += ",\"dht_error\": " + String(dhtErr);
+  msg += ",\"source\": \"" + String(thOk ? thName : bmeName) + "\"";
+  if (dhtErr != DHT22::OK) msg += ",\"dht_error\": " + String(dhtErr);
   msg += ",\"rssi\": " + String(WiFi.RSSI());
+  msg += ",\"i2c\": \"" + scanI2C() + "\"";
   msg += "}";
 
   // --- Publish ---
@@ -341,6 +373,11 @@ void setup() {
     Serial.println("BMP180 found");
   } else {
     Serial.println("No pressure sensor found");
+  }
+  // SHT4x measures on demand and sleeps in between (~1 uA); defaults are high precision, heater off
+  if (sht4.begin()) {
+    shtFound = true;
+    Serial.println("SHT4x found");
   }
 
   // Boot indicator, only on power-up/reset (not on every wake from deep sleep)

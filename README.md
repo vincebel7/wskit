@@ -4,7 +4,7 @@ wskit is an open-source, DIY **weather station kit** — lightweight sensor coll
 
 ## How it works
 
-A **Collector** (ESP32 or Arduino MKR1000) reads a BME280 and/or DHT22 sensor and publishes JSON readings over WiFi via MQTT. The **Server** (Docker Compose) receives those readings, stores them in MySQL, and serves a live dashboard.
+A **Collector** (ESP32 or Arduino MKR1000) reads an SHT45, BME280 and/or DHT22 sensor and publishes JSON readings over WiFi via MQTT. The **Server** (Docker Compose) receives those readings, stores them in MySQL, and serves a live dashboard.
 
 ![Container diagram](img/temperature-data-collector-1.jpg)
 (outdated diagram, similar concept)
@@ -33,13 +33,15 @@ A **Collector** (ESP32 or Arduino MKR1000) reads a BME280 and/or DHT22 sensor an
 
 ### Collector (ESP32 / Arduino MKR1000)
 
-1. Wire up your sensor(s). Use a BME280, a DHT22, or both:
+1. Wire up your sensor(s). The recommended setup is an SHT45 (temperature/humidity) plus a BME280 (pressure); a BME280 alone, or a DHT22, also work:
+   - **SHT45** (I2C, e.g. the Adafruit breakout): VIN → 3.3V, GND → GND, SDA → GPIO 21, SCL → GPIO 22 on ESP32 (pins 11/12 on MKR1000). Leave 3Vo unconnected. It shares SDA/SCL with the BME280 (wire both to the same pins, or chain them with STEMMA QT cables). Detected automatically at address 0x44.
    - **BME280** (I2C): VIN → 3.3V, GND → GND, SDA → GPIO 21, SCL → GPIO 22 on ESP32 (pins 11/12 on MKR1000). Detected automatically at address 0x76 or 0x77.
    - **DHT22**: see the [DHT circuit diagram](#dht-circuit-diagram) below, with a 10kΩ pull-up resistor.
 
 2. In the [Arduino IDE](https://www.arduino.cc/en/software/), select your board and install these libraries from the Library Manager:
    - [ArduinoMqttClient](https://github.com/arduino-libraries/ArduinoMqttClient)
    - [DHT22](https://github.com/dvarrel/DHT22)
+   - [Adafruit SHT4x Library](https://github.com/adafruit/Adafruit_SHT4X)
    - [Adafruit BME280 Library](https://github.com/adafruit/Adafruit_BME280_Library), [Adafruit BME680 Library](https://github.com/adafruit/Adafruit_BME680), and [Adafruit BMP085 Library](https://github.com/adafruit/Adafruit-BMP085-Library) (all three are needed to compile, even if you only use one sensor)
    - [WiFi101](https://docs.arduino.cc/libraries/wifi101) *(MKR1000 only)*
 
@@ -89,11 +91,12 @@ A **Collector** (ESP32 or Arduino MKR1000) reads a BME280 and/or DHT22 sensor an
 
 | Sensor | Status | Notes |
 |--------|--------|-------|
+| [SHT45](https://www.adafruit.com/product/5665) | **Active** | Temp: ±0.1°C; Humidity: ±1%; I2C, sleeps between readings. Recommended for temp/humidity |
 | [BME280](https://www.adafruit.com/product/2652) | **Active** | Temp, humidity, and barometric pressure over I2C |
 | [DHT22](https://www.adafruit.com/product/385) | **Active** | Temp: −40–80°C ±0.5°C; Humidity: 0–100% ±2% |
 | BME680 / BMP180 | Supported | Auto-detected in place of a BME280; BMP180 has no humidity |
 
-If both a DHT22 and a pressure sensor are connected, temperature and humidity come from the DHT22, and the pressure sensor supplies pressure (and takes over temperature/humidity if the DHT22 fails).
+Temperature and humidity come from the SHT45 if one is connected, otherwise from the DHT22. The pressure sensor supplies pressure, and takes over temperature/humidity if neither is connected or the reading fails.
 
 ### Miscellaneous parts
 
