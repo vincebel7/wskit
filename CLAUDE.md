@@ -138,7 +138,7 @@ char ssid[] = "";          // WiFi SSID
 char pass[] = "";          // WiFi password
 const char broker[] = "";  // MQTT broker IP
 const char mqttUser[] = ""; const char mqttPass[] = "";
-const unsigned long publishInterval = 60;  // seconds between readings (ESP32 deep sleeps in between)
+const unsigned long publishInterval = 300; // seconds between readings (ESP32 deep sleeps in between)
 
 // Optional static IP (ESP32 only). Leave staticIP at 0.0.0.0 to use DHCP.
 IPAddress staticIP(0, 0, 0, 0);     // e.g. 192.168.3.13 — reserve it on the router or pick one outside the DHCP pool

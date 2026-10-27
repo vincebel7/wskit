@@ -32,7 +32,7 @@ int port = 1883;
 const char topic[] = "General";
 
 // Publish interval (seconds). ESP32 deep sleeps between readings; MKR1000 stays awake.
-const unsigned long publishInterval = 60;
+const unsigned long publishInterval = 300;
 
 // Optional static IP (ESP32 only) - the biggest battery saving you can configure:
 // skipping DHCP cuts each wake from ~1.5-2 s to ~0.5 s. Reserve the IP on your router
@@ -305,12 +305,15 @@ void runCycle() {
   // Publish succeeded, reset the failure counter
   networkFailures = 0;
 
-  // --- Disconnect, then blink LED once (also gives the MQTT DISCONNECT time to send) ---
+  // --- Disconnect to save power ---
   mqttClient.stop();
+  delay(20);  // let the MQTT DISCONNECT leave before the radio goes off
+  disconnectWiFi();
+
+  // --- Blink LED once to show a successful publish (after WiFi is off, so it's cheap) ---
   digitalWrite(LEDPIN, HIGH);
   delay(200);
   digitalWrite(LEDPIN, LOW);
-  disconnectWiFi();
 }
 
 void setup() {
